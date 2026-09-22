@@ -1,0 +1,53 @@
+# Blog + Instagram automáticos com IA, variante com aprovação humana via WhatsApp
+
+Workflow n8n de **61 nós** derivado do [01-blog-academia-de-policia](../01-blog-academia-de-policia), adaptado para uma professora de Direito Constitucional (concursos e OAB). A mesma base (pauta em planilha, pesquisa no Perplexity, artigo com Claude, WordPress com SEO, capa gerada, carrossel a partir do post, pauta semanal automática) com uma diferença central: **o carrossel não é publicado direto no Instagram; ele é entregue no WhatsApp da cliente, pronto para postar.**
+
+Em produção desde julho de 2026: 2 artigos por dia e 1 carrossel a cada 2 horas de conteúdo pendente.
+
+## O que muda em relação ao workflow 01
+
+| | 01 (escola) | 02 (professora) |
+|---|---|---|
+| Fontes de notícia | 4 feeds (2 buscas do Google News + 2 blogs) | 2 feeds de blogs de concursos; filtro por temas de Direito Constitucional |
+| Classificação do post | por categoria do WordPress | por **tag** do WordPress (`TAG_NOTICIAS`, `TAG_MATERIA`) |
+| Capa | card gráfico com brasão | card com **foto da professora** sorteada de uma lista (`FOTOS` no Config), baixada e composta no HTML |
+| Destino do carrossel | Instagram Graph API (publicação automática) | **WhatsApp via Evolution API**: 1 texto de abertura, N imagens do carrossel na ordem, 1 story 9:16 e a legenda pronta para copiar |
+| Trava de duplicidade | tag `ig-ok` aplicada após publicar | tag `ig-ok` aplicada após o **envio** no WhatsApp |
+
+Motivo da mudança: a cliente quer revisar e postar com a própria voz, mas sem o trabalho de produzir. O n8n entrega o pacote completo; ela só arrasta para o Instagram.
+
+## Fluxos
+
+```
+08h  Tema      Planilha ──► Perplexity ──► Claude ──► WordPress + SEO ──► capa com foto ──► featured image
+15h  Notícias  2 RSS ──► filtro 48h ──► Claude escolhe ──► (mesmo caminho)
+8-22h/2h  IG   Post sem tag ig-ok ──► Claude (roteiro JSON) ──► slides HTML ──► screenshot ──► upload WP
+               ──► Evolution API: texto + slides + story + legenda ──► tag ig-ok
+Dom 19h  Pauta Temas atuais ──► Perplexity ──► Claude (8 temas) ──► planilha
+```
+
+### Envio pelo WhatsApp em detalhe
+O nó `Montar Mensagens WhatsApp` transforma o resultado em uma lista ordenada de chamadas (`sendText` e `sendMedia` da Evolution API), uma por item. O nó `Enviar WhatsApp` usa **batching de 1 item a cada 1,5 s** para manter a ordem e não estourar o limite da API. `Concluir Envio` só devolve o post para marcação da tag depois que todas as mensagens saíram, então uma falha no meio não marca o post como feito.
+
+## Decisões de projeto (além das do workflow 01)
+
+- **Aprovação humana como etapa do fluxo**, não como exceção: a automação para onde a marca pessoal precisa de controle.
+- **Fotos da capa em lista no Config**, sorteadas por execução: variedade visual sem depender de geração de imagem.
+- **WordPress como CDN** para os slides, mesmo sem publicar no Instagram: a Evolution API também precisa de URL pública para `sendMedia`.
+
+## Stack
+
+n8n · Anthropic API (Claude) · Perplexity API · WordPress REST API + Rank Math · Google Sheets · Evolution API (WhatsApp) · TinyPNG · Cloudinary · serviço próprio de screenshot (Puppeteer)
+
+## Como usar
+
+1. Importe `workflow.json`.
+2. Credenciais: Anthropic, Perplexity, WordPress (application password), Google Sheets, TinyPNG.
+3. Edite **Config**, **Config Notícias**, **Config IG** e **Config Pauta**. No Config IG, `WHATS_URL`, `WHATS_KEY`, `WHATS_INSTANCE` e `WHATS_NUMBER` apontam para a instância Evolution e o número que vai receber o pacote.
+4. Ative. `WP_STATUS: draft` para testar sem publicar.
+
+## Placeholders
+
+`ID_DA_PLANILHA`, `IG_USER_ID`, `META_TOKEN_AQUI`, `EVOLUTION_APIKEY_AQUI`, `SUA-EVOLUTION-API`, `SEU-SCREENSHOT-SERVICE`, `SEU-N8N`, `55DDNUMERO`, `55DDNUMERO_DESTINO`, `CLOUDINARY_CLOUD`, `CLOUDINARY_PRESET`, `INSTANCIA_EVOLUTION`, `CREDENTIAL_ID`.
+
+> Nota de segurança: neste desenho o token da Meta e a chave da Evolution ficam num nó Set. Para produção o recomendado é movê-los para credenciais do n8n (Header Auth) ou variáveis de ambiente (`$env`), como já é feito com Anthropic e Perplexity aqui.
