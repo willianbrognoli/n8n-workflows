@@ -1,0 +1,877 @@
+{
+  "name": "FGV Questoes Gabaritadas -> Drive",
+  "nodes": [
+    {
+      "id": "7f39c970-ecfa-429d-afe7-fe186750241d",
+      "name": "Iniciar",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        -1400,
+        300
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "d49ad65c-d58b-4d18-bf7b-c7532a0e5678",
+      "name": "Config",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -1200,
+        300
+      ],
+      "parameters": {
+        "mode": "manual",
+        "includeOtherFields": false,
+        "assignments": {
+          "assignments": [
+            {
+              "id": "cfg-slug",
+              "name": "slug",
+              "value": "alema23",
+              "type": "string"
+            },
+            {
+              "id": "cfg-folder",
+              "name": "driveFolderId",
+              "value": "ID_DA_PASTA_DRIVE",
+              "type": "string"
+            },
+            {
+              "id": "cfg-max",
+              "name": "maxProvas",
+              "value": 1,
+              "type": "number"
+            },
+            {
+              "id": "cfg-cargo",
+              "name": "filtroCargo",
+              "value": "Advogado",
+              "type": "string"
+            },
+            {
+              "id": "cfg-stirling",
+              "name": "stirlingUrl",
+              "value": "http://n8n2_stirlingpdf:8080",
+              "type": "string"
+            },
+            {
+              "id": "cfg-model",
+              "name": "anthropicModel",
+              "value": "claude-sonnet-4-6",
+              "type": "string"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "70b678a2-ebd2-444c-94f4-dac1a6e923b6",
+      "name": "Buscar Pagina do Concurso",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        -1000,
+        300
+      ],
+      "parameters": {
+        "method": "GET",
+        "url": "=https://conhecimento.fgv.br/concursos/{{ $json.slug }}",
+        "options": {
+          "timeout": 60000,
+          "response": {
+            "response": {
+              "responseFormat": "text",
+              "outputPropertyName": "html"
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "7d9ff705-0425-4ed1-8570-41c8a00d2d40",
+      "name": "Extrair Links",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -800,
+        300
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "const cfg = $('Config').first().json;\nconst html = $input.first().json.html;\nconst BASE = 'https://conhecimento.fgv.br';\nconst strip = s => s.replace(/<[^>]+>/g, ' ').replace(/&amp;/g, '&').replace(/\\s+/g, ' ').trim();\nconst norm = s => (s || '').normalize('NFD').replace(/[\\u0300-\\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '');\nconst tokenRe = /<(strong|b|h3|h4)[^>]*>([\\s\\S]*?)<\\/\\1>|<a\\s+[^>]*href=\"([^\"]+)\"[^>]*>([\\s\\S]*?)<\\/a>/gi;\nlet lastHeading = '';\nconst provas = [];\nconst gabaritos = [];\nconst seen = new Set();\nlet m;\nwhile ((m = tokenRe.exec(html)) !== null) {\n  if (m[1]) {\n    const t = strip(m[2]);\n    if (t && t.length > 3 && !/^[\\d/.\\s-]+$/.test(t)) lastHeading = t;\n    continue;\n  }\n  let href = m[3];\n  const text = strip(m[4]);\n  if (!/\\.pdf(\\?|$)/i.test(href)) continue;\n  if (href.startsWith('/')) href = BASE + href;\n  if (seen.has(href)) continue;\n  const fname = href.split('/').pop();\n  const blob = text + ' ' + fname;\n  if (/gabarito/i.test(blob) && !/recurso|interposi|comunicado/i.test(blob)) {\n    seen.add(href);\n    gabaritos.push({ url: href, texto: text, definitivo: /definitiv/i.test(blob) });\n    continue;\n  }\n  const isTipoLink = /^tipo\\s*\\d+$/i.test(text);\n  const excl = /resultado|recurso|edital|cronograma|comunicado|retifica|convoca|isencao|homologa|heteroidentifica|biopsico|titulos|demanda|indeferi|deferi|discursiva|pratica|redacao/i;\n  if ((/tipo[-_ ]?\\d/i.test(fname) || isTipoLink) && !excl.test(blob)) {\n    seen.add(href);\n    const tm = blob.match(/tipo[-_ ]?(\\d+)/i);\n    let cargo = isTipoLink ? lastHeading : (text || lastHeading);\n    cargo = cargo.replace(/\\s*tipo\\s*\\d+\\s*$/i, '').trim();\n    provas.push({ provaUrl: href, cargo, tipo: tm ? tm[1] : '1', arquivo: fname });\n  }\n}\nif (gabaritos.length === 0) throw new Error('Nenhum gabarito encontrado na pagina do concurso ' + cfg.slug);\nconst defs = gabaritos.filter(g => g.definitivo);\nconst gabaritoUrl = (defs.length ? defs : gabaritos)[0].url;\nlet lista = provas;\nif (cfg.filtroCargo) lista = lista.filter(p => norm(p.cargo).includes(norm(cfg.filtroCargo)));\nif (cfg.maxProvas > 0) lista = lista.slice(0, cfg.maxProvas);\nif (lista.length === 0) throw new Error('Nenhuma prova apos filtros (total na pagina: ' + provas.length + ')');\nconst anoM = cfg.slug.match(/(\\d{2})(?!.*\\d)/);\nreturn [{ json: { slug: cfg.slug, ano: anoM ? 2000 + parseInt(anoM[1]) : null, gabaritoUrl, provas: lista, totalProvasPagina: provas.length } }];"
+      }
+    },
+    {
+      "id": "de6493f8-97af-4189-a44a-0f318a8f64a1",
+      "name": "Baixar Gabarito PDF",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        -600,
+        300
+      ],
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $json.gabaritoUrl }}",
+        "options": {
+          "timeout": 120000,
+          "response": {
+            "response": {
+              "responseFormat": "file",
+              "outputPropertyName": "data"
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "c47901eb-2409-4245-a264-5880eaa570e4",
+      "name": "Gabarito em Base64",
+      "type": "n8n-nodes-base.extractFromFile",
+      "typeVersion": 1.1,
+      "position": [
+        -400,
+        300
+      ],
+      "parameters": {
+        "operation": "binaryToPropery",
+        "binaryPropertyName": "data",
+        "destinationKey": "b64"
+      }
+    },
+    {
+      "id": "38fa81db-99df-4012-aca9-c40af1901cf7",
+      "name": "Claude Estruturar Gabarito",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        -200,
+        300
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.anthropic.com/v1/messages",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "specifyHeaders": "keypair",
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "anthropic-version",
+              "value": "2023-06-01"
+            },
+            {
+              "name": "content-type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "json",
+        "specifyBody": "json",
+        "jsonBody": "={{ { model: $('Config').first().json.anthropicModel, max_tokens: 50000, messages: [ { role: 'user', content: [ { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: $json.b64 } }, { type: 'text', text: 'Este PDF e o gabarito oficial de prova objetiva da banca FGV. Ele contem tabelas no formato: uma linha de cabecalho \\'Cargo - TIPO N\\', seguida de linhas com numeros de questoes e linhas com as letras das respostas (A-E) ou * para questao anulada. Extraia TODOS os cargos e tipos e responda APENAS com JSON valido, sem markdown, sem texto extra, neste formato: { \\'Nome Do Cargo - TIPO 1\\': { \\'1\\': \\'A\\', \\'2\\': \\'B\\', \\'51\\': \\'ANULADA\\' } }. Use aspas duplas no JSON. Mapeie * para ANULADA. Nao invente respostas.' } ] } ] } }}",
+        "options": {
+          "timeout": 900000
+        }
+      }
+    },
+    {
+      "id": "222a8607-1c8f-4dc5-abae-18722bad1294",
+      "name": "Parsear Gabarito",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        0,
+        300
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "const resp = $input.first().json;\nif (resp.stop_reason === 'max_tokens') throw new Error('Gabarito truncado por max_tokens: aumente o limite ou divida o PDF');\nconst txt = (resp.content || []).filter(c => c.type === 'text').map(c => c.text).join('');\nconst s = txt.indexOf('{');\nconst e = txt.lastIndexOf('}');\nif (s === -1 || e === -1) throw new Error('Resposta do gabarito sem JSON: ' + txt.slice(0, 200));\nconst gabaritos = JSON.parse(txt.slice(s, e + 1));\nconst chaves = Object.keys(gabaritos);\nif (chaves.length === 0) throw new Error('Gabarito vazio');\nreturn [{ json: { gabaritos, cargoTipos: chaves.length } }];"
+      }
+    },
+    {
+      "id": "e31c33b8-4984-4873-8ac7-d1008145f8b9",
+      "name": "Listar Provas",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        200,
+        300
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "const info = $('Extrair Links').first().json;\nreturn info.provas.map(p => ({ json: { ...p, slug: info.slug, ano: info.ano } }));"
+      }
+    },
+    {
+      "id": "beaf6991-3320-4ac8-a2e5-38a4914e9a3b",
+      "name": "Resumo Final",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        650,
+        150
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "const provas = $('Listar Provas').all().length;\nreturn [{ json: { status: 'concluido', provasProcessadas: provas, pastaDrive: $('Config').first().json.driveFolderId } }];"
+      }
+    },
+    {
+      "id": "ac6ccc2e-3d67-4b26-bedd-47c98ce858b6",
+      "name": "Baixar Prova PDF",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        650,
+        450
+      ],
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $json.provaUrl }}",
+        "options": {
+          "timeout": 120000,
+          "response": {
+            "response": {
+              "responseFormat": "file",
+              "outputPropertyName": "data"
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "acf2b75b-355a-4096-aba1-162353d70c54",
+      "name": "Preparar Prova",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        850,
+        450
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "const meta = $('Loop Provas').first().json;\nconst item = $input.first();\nconst buf = await this.helpers.getBinaryDataBuffer(0, 'data');\nreturn [{ json: { ...meta, b64: buf.toString('base64'), tamanhoKb: Math.round(buf.length / 1024) }, binary: item.binary }];"
+      }
+    },
+    {
+      "id": "c50e8d6d-0cd6-4fc1-9656-36b5061e7942",
+      "name": "Upload PDF Fonte",
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        1050,
+        450
+      ],
+      "parameters": {
+        "resource": "file",
+        "operation": "upload",
+        "inputDataFieldName": "data",
+        "name": "={{ $json.slug }}-{{ $json.arquivo }}",
+        "driveId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "My Drive"
+        },
+        "folderId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "={{ $('Config').first().json.driveFolderId }}"
+        }
+      }
+    },
+    {
+      "id": "8e54360f-0c35-40af-b054-402e53351881",
+      "name": "Claude Extrair Questoes",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        1250,
+        450
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.anthropic.com/v1/messages",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "specifyHeaders": "keypair",
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "anthropic-version",
+              "value": "2023-06-01"
+            },
+            {
+              "name": "content-type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "json",
+        "specifyBody": "json",
+        "jsonBody": "={{ { model: $('Config').first().json.anthropicModel, max_tokens: 50000, messages: [ { role: 'user', content: [ { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: $('Preparar Prova').first().json.b64 } }, { type: 'text', text: 'Este PDF e uma prova objetiva da banca FGV diagramada em duas colunas. Extraia TODAS as questoes na integra e responda APENAS com um array JSON valido, sem markdown e sem texto extra. Formato de cada item: { numero: int, disciplina: string ou null (cabecalho da secao, ex Lingua Portuguesa), assunto: string (tema fino em minusculas com underscore), texto_apoio: string ou null (texto-base compartilhado, repetido em cada questao que o usa), enunciado: string (comando da questao sem alternativas), alternativas: { A: string, B: string, C: string, D: string, E: string }, tem_imagem: boolean (true se a questao depende de figura, grafico ou tabela visual), pagina_imagem: int ou null (numero da pagina do PDF onde a figura esta) }. Regras: preserve o texto original na integra corrigindo apenas hifenizacao de coluna; ignore capa, instrucoes e rascunho; nao resolva as questoes; nao inclua gabarito; use aspas duplas.' } ] } ] } }}",
+        "options": {
+          "timeout": 900000
+        }
+      }
+    },
+    {
+      "id": "e406f464-4799-4ce4-8fd6-19e741ec19f7",
+      "name": "Montar JSON Final",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1450,
+        450
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "const resp = $input.first().json;\nif (resp.stop_reason === 'max_tokens') throw new Error('Extracao truncada por max_tokens na prova ' + $('Preparar Prova').first().json.arquivo);\nconst txt = (resp.content || []).filter(c => c.type === 'text').map(c => c.text).join('');\nconst s = txt.indexOf('[');\nconst e = txt.lastIndexOf(']');\nif (s === -1 || e === -1) throw new Error('Resposta sem array JSON: ' + txt.slice(0, 200));\nconst questoesRaw = JSON.parse(txt.slice(s, e + 1));\nconst meta = $('Preparar Prova').first().json;\nconst gab = $('Parsear Gabarito').first().json.gabaritos;\nconst norm = x => (x || '').normalize('NFD').replace(/[\\u0300-\\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '');\nconst alvo = norm(meta.cargo) + 'tipo' + meta.tipo;\nlet respostas = {};\nfor (const [k, v] of Object.entries(gab)) {\n  const nk = norm(k);\n  if (nk === alvo) { respostas = v; break; }\n  if (nk.endsWith('tipo' + meta.tipo) && (nk.includes(norm(meta.cargo)) || norm(meta.cargo).includes(nk.replace('tipo' + meta.tipo, '')))) respostas = v;\n}\nconst provaId = 'fgv-' + meta.slug + '-' + norm(meta.cargo).slice(0, 30) + '-t' + meta.tipo;\nlet disciplinaAtual = null;\nconst questoes = questoesRaw.map(q => {\n  if (q.disciplina) disciplinaAtual = q.disciplina; else q.disciplina = disciplinaAtual;\n  const r = respostas[String(q.numero)] || null;\n  return {\n    id: provaId + '-q' + q.numero,\n    numero: q.numero,\n    disciplina: q.disciplina,\n    assunto: q.assunto || null,\n    texto_apoio: q.texto_apoio || null,\n    enunciado: q.enunciado,\n    alternativas: q.alternativas,\n    gabarito: r === 'ANULADA' ? null : r,\n    anulada: r === 'ANULADA',\n    tem_imagem: !!q.tem_imagem,\n    pagina_imagem: q.pagina_imagem || null,\n    imagem_arquivo: q.tem_imagem && q.pagina_imagem ? provaId + '-p' + q.pagina_imagem + '.png' : null\n  };\n});\nconst semGabarito = questoes.filter(q => !q.gabarito && !q.anulada).length;\nconst paginas = [...new Set(questoes.filter(q => q.tem_imagem && q.pagina_imagem).map(q => q.pagina_imagem))];\nconst payload = {\n  id: provaId,\n  banca: 'FGV',\n  concurso_slug: meta.slug,\n  cargo: meta.cargo,\n  ano: meta.ano,\n  prova_tipo: meta.tipo,\n  arquivo_fonte: meta.slug + '-' + meta.arquivo,\n  total_questoes: questoes.length,\n  questoes_sem_gabarito: semGabarito,\n  questoes\n};\nconst fileName = provaId + '.json';\nreturn [{\n  json: { provaId, fileName, totalQuestoes: questoes.length, semGabarito, temImagens: paginas.length > 0, paginas },\n  binary: { data: { data: Buffer.from(JSON.stringify(payload, null, 1)).toString('base64'), mimeType: 'application/json', fileName } }\n}];"
+      }
+    },
+    {
+      "id": "e575135d-e532-4011-a052-af426726e49d",
+      "name": "Upload JSON Questoes",
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        1650,
+        450
+      ],
+      "parameters": {
+        "resource": "file",
+        "operation": "upload",
+        "inputDataFieldName": "data",
+        "name": "={{ $json.fileName }}",
+        "driveId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "My Drive"
+        },
+        "folderId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "={{ $('Config').first().json.driveFolderId }}"
+        }
+      }
+    },
+    {
+      "id": "b9413b6f-50b5-45de-8394-06e352b8fdcb",
+      "name": "Tem Imagens?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1850,
+        450
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $('Montar JSON Final').item.json.temImagens }}",
+              "operator": {
+                "type": "boolean",
+                "operation": "true"
+              }
+            }
+          ],
+          "combinator": "and"
+        }
+      }
+    },
+    {
+      "id": "5340f547-d252-4fae-b6e0-89acd6881291",
+      "name": "Reanexar PDF da Prova",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2050,
+        350
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "const info = $('Montar JSON Final').first().json;\nconst prova = $('Preparar Prova').first();\nreturn [{ json: { provaId: info.provaId, paginas: info.paginas }, binary: { data: prova.binary.data } }];"
+      }
+    },
+    {
+      "id": "7777a6ae-7371-4897-a0b5-c509f11bed37",
+      "name": "Stirling PDF para PNG",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        2250,
+        350
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Config').first().json.stirlingUrl }}/api/v1/convert/pdf/img",
+        "sendBody": true,
+        "contentType": "multipart-form-data",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "fileInput",
+              "parameterType": "formBinaryData",
+              "inputDataFieldName": "data"
+            },
+            {
+              "name": "imageFormat",
+              "value": "png"
+            },
+            {
+              "name": "singleOrMultiple",
+              "value": "multiple"
+            },
+            {
+              "name": "colorType",
+              "value": "color"
+            },
+            {
+              "name": "dpi",
+              "value": "150"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 300000,
+          "response": {
+            "response": {
+              "responseFormat": "file",
+              "outputPropertyName": "data"
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "ee362ecd-5318-4179-8c60-ed6cce1e7b52",
+      "name": "Descompactar Paginas",
+      "type": "n8n-nodes-base.compression",
+      "typeVersion": 1.1,
+      "position": [
+        2450,
+        350
+      ],
+      "parameters": {
+        "operation": "decompress",
+        "binaryPropertyName": "data",
+        "outputPrefix": "pg_"
+      }
+    },
+    {
+      "id": "206f8f20-d88a-44b3-b09f-61df7a9e8bf6",
+      "name": "Separar Imagens das Questoes",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2650,
+        350
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "const info = $('Reanexar PDF da Prova').first().json;\nconst manter = new Set(info.paginas.map(Number));\nconst out = [];\nfor (const item of $input.all()) {\n  for (const [key, bin] of Object.entries(item.binary || {})) {\n    const m = (bin.fileName || key).match(/(\\d+)\\.(png|jpg|jpeg)$/i);\n    if (!m) continue;\n    const pagina = parseInt(m[1]);\n    if (!manter.has(pagina)) continue;\n    const fileName = info.provaId + '-p' + pagina + '.png';\n    out.push({ json: { fileName, pagina, provaId: info.provaId }, binary: { data: { ...bin, fileName } } });\n  }\n}\nif (out.length === 0) return [{ json: { aviso: 'Nenhuma pagina do zip casou com as paginas esperadas: ' + info.paginas.join(','), fileName: null } }];\nreturn out;"
+      }
+    },
+    {
+      "id": "00ca620b-ae63-4043-a855-83acb63cebbf",
+      "name": "So Itens Com Arquivo",
+      "type": "n8n-nodes-base.filter",
+      "typeVersion": 2.2,
+      "position": [
+        2850,
+        350
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.fileName }}",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty"
+              }
+            }
+          ],
+          "combinator": "and"
+        }
+      }
+    },
+    {
+      "id": "0729d2ec-8142-4793-bd0a-9fe1322dac63",
+      "name": "Upload Imagem da Questao",
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        3050,
+        350
+      ],
+      "parameters": {
+        "resource": "file",
+        "operation": "upload",
+        "inputDataFieldName": "data",
+        "name": "={{ $json.fileName }}",
+        "driveId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "My Drive"
+        },
+        "folderId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "={{ $('Config').first().json.driveFolderId }}"
+        }
+      }
+    },
+    {
+      "id": "6a29a8fc-4cd5-4fee-8a9b-8d689f5bdbaf",
+      "name": "Proxima Prova (com imagens)",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        3250,
+        350
+      ],
+      "parameters": {},
+      "executeOnce": true
+    },
+    {
+      "id": "32ae0669-827e-4d74-b824-09ecd0549e75",
+      "name": "Loop Provas",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        400,
+        300
+      ],
+      "parameters": {
+        "batchSize": 1
+      }
+    },
+    {
+      "id": "38a8dce6-48cb-4aac-9b9c-6615bf56be1e",
+      "name": "Sticky Note 742faee9",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -1250,
+        250
+      ],
+      "parameters": {
+        "content": "## FGV Questoes Gabaritadas para o Drive\n\n1. Ajuste o no Config: slug do concurso, filtroCargo (vazio = todos os cargos), maxProvas (0 = todas)\n2. Crie as credenciais: Anthropic x-api-key (Header Auth, nome do header x-api-key) e Google Drive Questoes (OAuth2)\n3. Rode manualmente. Saida no Drive: PDF fonte, JSON por prova com questoes + gabarito, e PNG das paginas com figuras",
+        "color": 4,
+        "width": 300,
+        "height": 200
+      }
+    }
+  ],
+  "connections": {
+    "Iniciar": {
+      "main": [
+        [
+          {
+            "node": "Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Config": {
+      "main": [
+        [
+          {
+            "node": "Buscar Pagina do Concurso",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Buscar Pagina do Concurso": {
+      "main": [
+        [
+          {
+            "node": "Extrair Links",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extrair Links": {
+      "main": [
+        [
+          {
+            "node": "Baixar Gabarito PDF",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Baixar Gabarito PDF": {
+      "main": [
+        [
+          {
+            "node": "Gabarito em Base64",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gabarito em Base64": {
+      "main": [
+        [
+          {
+            "node": "Claude Estruturar Gabarito",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Claude Estruturar Gabarito": {
+      "main": [
+        [
+          {
+            "node": "Parsear Gabarito",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parsear Gabarito": {
+      "main": [
+        [
+          {
+            "node": "Listar Provas",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Listar Provas": {
+      "main": [
+        [
+          {
+            "node": "Loop Provas",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Baixar Prova PDF": {
+      "main": [
+        [
+          {
+            "node": "Preparar Prova",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Preparar Prova": {
+      "main": [
+        [
+          {
+            "node": "Upload PDF Fonte",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Upload PDF Fonte": {
+      "main": [
+        [
+          {
+            "node": "Claude Extrair Questoes",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Claude Extrair Questoes": {
+      "main": [
+        [
+          {
+            "node": "Montar JSON Final",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Montar JSON Final": {
+      "main": [
+        [
+          {
+            "node": "Upload JSON Questoes",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Upload JSON Questoes": {
+      "main": [
+        [
+          {
+            "node": "Tem Imagens?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Tem Imagens?": {
+      "main": [
+        [
+          {
+            "node": "Reanexar PDF da Prova",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Loop Provas",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Reanexar PDF da Prova": {
+      "main": [
+        [
+          {
+            "node": "Stirling PDF para PNG",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Stirling PDF para PNG": {
+      "main": [
+        [
+          {
+            "node": "Descompactar Paginas",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Descompactar Paginas": {
+      "main": [
+        [
+          {
+            "node": "Separar Imagens das Questoes",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Separar Imagens das Questoes": {
+      "main": [
+        [
+          {
+            "node": "So Itens Com Arquivo",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "So Itens Com Arquivo": {
+      "main": [
+        [
+          {
+            "node": "Upload Imagem da Questao",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Upload Imagem da Questao": {
+      "main": [
+        [
+          {
+            "node": "Proxima Prova (com imagens)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Proxima Prova (com imagens)": {
+      "main": [
+        [
+          {
+            "node": "Loop Provas",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Loop Provas": {
+      "main": [
+        [
+          {
+            "node": "Resumo Final",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Baixar Prova PDF",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "meta": {
+    "sanitized": true,
+    "note": "Credenciais, IDs de conta e hosts internos trocados por placeholders."
+  }
+}
