@@ -1,0 +1,579 @@
+{
+  "name": "Meta Ads - coleta diaria de metricas",
+  "nodes": [
+    {
+      "id": "26f76fba-ce21-4778-921a-938ce2ce753a",
+      "name": "Diariamente 04:30",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.3,
+      "position": [
+        0,
+        0
+      ],
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "days",
+              "daysInterval": 1,
+              "triggerAtHour": 4,
+              "triggerAtMinute": 30
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "5d8b32cd-9848-4fb6-bb5a-6b1b02542d0d",
+      "name": "Define periodo",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        224,
+        0
+      ],
+      "parameters": {
+        "jsCode": "const zone = 'America/Sao_Paulo';\nconst hoje = DateTime.now().setZone(zone);\nlet since, until;\nif ($execution.mode !== 'production') {\n  since = hoje.minus({ days: 30 }).toFormat('yyyy-LL-dd');\n  until = hoje.minus({ days: 1 }).toFormat('yyyy-LL-dd');\n} else {\n  const ontem = hoje.minus({ days: 1 }).toFormat('yyyy-LL-dd');\n  since = ontem; until = ontem;\n}\nreturn [{ json: { since: since, until: until } }];"
+      }
+    },
+    {
+      "id": "5b3bee73-e7e2-4998-8808-863e1f301e6e",
+      "name": "Meta: campanhas",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        448,
+        0
+      ],
+      "parameters": {
+        "method": "GET",
+        "url": "https://graph.facebook.com/v23.0/act_ID_DA_CONTA_DE_ANUNCIOS/insights",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "facebookGraphApi",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "level",
+              "value": "campaign"
+            },
+            {
+              "name": "fields",
+              "value": "campaign_id,campaign_name,spend,impressions,clicks,cpm,cpc,ctr,actions,action_values"
+            },
+            {
+              "name": "time_increment",
+              "value": "1"
+            },
+            {
+              "name": "limit",
+              "value": "500"
+            },
+            {
+              "name": "time_range",
+              "value": "={{ '{\"since\":\"' + $('Define periodo').first().json.since + '\",\"until\":\"' + $('Define periodo').first().json.until + '\"}' }}"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 60000,
+          "pagination": {
+            "pagination": {
+              "paginationMode": "responseContainsNextURL",
+              "nextURL": "={{ $response.body.paging ? $response.body.paging.next : undefined }}",
+              "paginationCompleteWhen": "other",
+              "completeExpression": "={{ !$response.body.paging || !$response.body.paging.next }}",
+              "limitPagesFetched": true,
+              "maxRequests": 20
+            }
+          }
+        }
+      },
+      "credentials": {
+        "facebookGraphApi": {
+          "id": "CREDENTIAL_ID",
+          "name": "Facebook Graph account"
+        }
+      },
+      "executeOnce": true
+    },
+    {
+      "id": "74834da4-ccdd-4699-bceb-78ba975285cc",
+      "name": "Trata campanhas",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        672,
+        0
+      ],
+      "parameters": {
+        "jsCode": "const fmt = (n) => {\n  const v = Number(n);\n  if (!isFinite(v)) return '';\n  return (Math.round(v * 100) / 100).toFixed(2).replace('.', ',');\n};\nconst inteiro = (n) => String(parseInt(n || 0, 10) || 0);\nconst dataBr = (iso) => { const p = String(iso || '').split('-'); return p.length === 3 ? p[2] + '/' + p[1] + '/' + p[0] : ''; };\nconst LEADS_T = ['lead','onsite_conversion.lead_grouped','leadgen_grouped','offsite_conversion.fb_pixel_lead','onsite_web_lead'];\nconst COMPRAS_T = ['omni_purchase','purchase','offsite_conversion.fb_pixel_purchase','onsite_web_purchase'];\nconst pega = (arr, tipos) => {\n  if (!Array.isArray(arr)) return 0;\n  for (const t of tipos) {\n    const hit = arr.find(a => a.action_type === t);\n    if (hit) return Number(hit.value) || 0;\n  }\n  return 0;\n};\nconst registros = [];\nfor (const item of $input.all()) {\n  const corpo = item.json || {};\n  const lista = Array.isArray(corpo.data) ? corpo.data : [];\n  for (const r of lista) registros.push(r);\n}\nconst linhas = [];\nfor (const r of registros) {\n  const gasto = Number(r.spend) || 0;\n  const leads = pega(r.actions, LEADS_T);\n  const compras = pega(r.actions, COMPRAS_T);\n  const valor = pega(r.action_values, COMPRAS_T);\n  linhas.push({ json: {\n    'Data': dataBr(r.date_start),\n    'Plataforma': 'Meta Ads',\n    'Campanha': r.campaign_name || '',\n    'Campanha_ID': r.campaign_id || '',\n    'Gasto': fmt(gasto),\n    'Impressoes': inteiro(r.impressions),\n    'Cliques': inteiro(r.clicks),\n    'CPM': fmt(r.cpm),\n    'CPC': fmt(r.cpc),\n    'CTR': fmt(r.ctr),\n    'Leads': inteiro(leads),\n    'Compras': inteiro(compras),\n    'Valor_Compras': fmt(valor),\n    'CPL': leads > 0 ? fmt(gasto / leads) : '',\n    'CPA': compras > 0 ? fmt(gasto / compras) : '',\n    'ROAS': gasto > 0 && valor > 0 ? fmt(valor / gasto) : '',\n    '_d': r.date_start,\n    '_gasto': gasto,\n    '_imp': parseInt(r.impressions || 0, 10) || 0,\n    '_cli': parseInt(r.clicks || 0, 10) || 0,\n    '_cpm': Number(r.cpm) || 0,\n    '_cpc': Number(r.cpc) || 0,\n    '_ctr': Number(r.ctr) || 0,\n    '_leads': leads,\n    '_compras': compras,\n    '_valor': valor\n  } });\n}\nreturn linhas;"
+      }
+    },
+    {
+      "id": "87fc780c-04e6-4d50-8fe5-5536f81b8dd7",
+      "name": "Grava Campanhas",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        896,
+        0
+      ],
+      "parameters": {
+        "resource": "sheet",
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "ID_DA_PLANILHA"
+        },
+        "sheetName": {
+          "__rl": true,
+          "mode": "name",
+          "value": "Campanhas"
+        },
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "value": {},
+          "schema": []
+        },
+        "options": {
+          "handlingExtraData": "ignoreIt"
+        }
+      },
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "CREDENTIAL_ID",
+          "name": "Google Sheets account"
+        }
+      },
+      "disabled": false
+    },
+    {
+      "id": "67178470-d59e-449e-b752-23fa69bd3b7f",
+      "name": "Meta: demografia",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        1120,
+        0
+      ],
+      "parameters": {
+        "method": "GET",
+        "url": "https://graph.facebook.com/v23.0/act_ID_DA_CONTA_DE_ANUNCIOS/insights",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "facebookGraphApi",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "level",
+              "value": "account"
+            },
+            {
+              "name": "breakdowns",
+              "value": "age,gender"
+            },
+            {
+              "name": "fields",
+              "value": "spend,impressions,clicks,actions,action_values"
+            },
+            {
+              "name": "time_increment",
+              "value": "1"
+            },
+            {
+              "name": "limit",
+              "value": "500"
+            },
+            {
+              "name": "time_range",
+              "value": "={{ '{\"since\":\"' + $('Define periodo').first().json.since + '\",\"until\":\"' + $('Define periodo').first().json.until + '\"}' }}"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 60000,
+          "pagination": {
+            "pagination": {
+              "paginationMode": "responseContainsNextURL",
+              "nextURL": "={{ $response.body.paging ? $response.body.paging.next : undefined }}",
+              "paginationCompleteWhen": "other",
+              "completeExpression": "={{ !$response.body.paging || !$response.body.paging.next }}",
+              "limitPagesFetched": true,
+              "maxRequests": 20
+            }
+          }
+        }
+      },
+      "credentials": {
+        "facebookGraphApi": {
+          "id": "CREDENTIAL_ID",
+          "name": "Facebook Graph account"
+        }
+      },
+      "executeOnce": true
+    },
+    {
+      "id": "800d80cb-6646-42f5-a477-d2013d78fdcd",
+      "name": "Trata demografia",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1344,
+        0
+      ],
+      "parameters": {
+        "jsCode": "const fmt = (n) => {\n  const v = Number(n);\n  if (!isFinite(v)) return '';\n  return (Math.round(v * 100) / 100).toFixed(2).replace('.', ',');\n};\nconst inteiro = (n) => String(parseInt(n || 0, 10) || 0);\nconst dataBr = (iso) => { const p = String(iso || '').split('-'); return p.length === 3 ? p[2] + '/' + p[1] + '/' + p[0] : ''; };\nconst LEADS_T = ['lead','onsite_conversion.lead_grouped','leadgen_grouped','offsite_conversion.fb_pixel_lead','onsite_web_lead'];\nconst COMPRAS_T = ['omni_purchase','purchase','offsite_conversion.fb_pixel_purchase','onsite_web_purchase'];\nconst pega = (arr, tipos) => {\n  if (!Array.isArray(arr)) return 0;\n  for (const t of tipos) {\n    const hit = arr.find(a => a.action_type === t);\n    if (hit) return Number(hit.value) || 0;\n  }\n  return 0;\n};\nconst registros = [];\nfor (const item of $input.all()) {\n  const corpo = item.json || {};\n  const lista = Array.isArray(corpo.data) ? corpo.data : [];\n  for (const r of lista) registros.push(r);\n}\nconst GEN = { male: 'Masculino', female: 'Feminino', unknown: 'Nao informado' };\nconst linhas = [];\nfor (const r of registros) {\n  const leads = pega(r.actions, LEADS_T);\n  const compras = pega(r.actions, COMPRAS_T);\n  const valor = pega(r.action_values, COMPRAS_T);\n  linhas.push({ json: {\n    'Data': dataBr(r.date_start),\n    'Plataforma': 'Meta Ads',\n    'Idade': r.age || '',\n    'Genero': GEN[r.gender] || r.gender || '',\n    'Gasto': fmt(r.spend),\n    'Impressoes': inteiro(r.impressions),\n    'Cliques': inteiro(r.clicks),\n    'Leads': inteiro(leads),\n    'Compras': inteiro(compras),\n    'Valor_Compras': fmt(valor),\n    '_d': r.date_start,\n    '_gasto': Number(r.spend) || 0,\n    '_imp': parseInt(r.impressions || 0, 10) || 0,\n    '_cli': parseInt(r.clicks || 0, 10) || 0,\n    '_leads': leads,\n    '_compras': compras,\n    '_valor': valor\n  } });\n}\nreturn linhas;"
+      }
+    },
+    {
+      "id": "eb41d494-7948-4302-9008-e860f7cb9d62",
+      "name": "Grava Demografia",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        1568,
+        0
+      ],
+      "parameters": {
+        "resource": "sheet",
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "ID_DA_PLANILHA"
+        },
+        "sheetName": {
+          "__rl": true,
+          "mode": "name",
+          "value": "Demografia"
+        },
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "value": {},
+          "schema": []
+        },
+        "options": {
+          "handlingExtraData": "ignoreIt"
+        }
+      },
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "CREDENTIAL_ID",
+          "name": "Google Sheets account"
+        }
+      },
+      "disabled": false
+    },
+    {
+      "id": "5fd9f389-4b8e-4d42-998b-acb953a0b4fd",
+      "name": "Meta: regiao",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        1792,
+        0
+      ],
+      "parameters": {
+        "method": "GET",
+        "url": "https://graph.facebook.com/v23.0/act_ID_DA_CONTA_DE_ANUNCIOS/insights",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "facebookGraphApi",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "level",
+              "value": "account"
+            },
+            {
+              "name": "breakdowns",
+              "value": "region"
+            },
+            {
+              "name": "fields",
+              "value": "spend,impressions,clicks,actions,action_values"
+            },
+            {
+              "name": "time_increment",
+              "value": "1"
+            },
+            {
+              "name": "limit",
+              "value": "500"
+            },
+            {
+              "name": "time_range",
+              "value": "={{ '{\"since\":\"' + $('Define periodo').first().json.since + '\",\"until\":\"' + $('Define periodo').first().json.until + '\"}' }}"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 60000,
+          "pagination": {
+            "pagination": {
+              "paginationMode": "responseContainsNextURL",
+              "nextURL": "={{ $response.body.paging ? $response.body.paging.next : undefined }}",
+              "paginationCompleteWhen": "other",
+              "completeExpression": "={{ !$response.body.paging || !$response.body.paging.next }}",
+              "limitPagesFetched": true,
+              "maxRequests": 20
+            }
+          }
+        }
+      },
+      "credentials": {
+        "facebookGraphApi": {
+          "id": "CREDENTIAL_ID",
+          "name": "Facebook Graph account"
+        }
+      },
+      "executeOnce": true
+    },
+    {
+      "id": "1c14081e-cf76-408d-8139-5d2af4f97006",
+      "name": "Trata regiao",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2016,
+        0
+      ],
+      "parameters": {
+        "jsCode": "const fmt = (n) => {\n  const v = Number(n);\n  if (!isFinite(v)) return '';\n  return (Math.round(v * 100) / 100).toFixed(2).replace('.', ',');\n};\nconst inteiro = (n) => String(parseInt(n || 0, 10) || 0);\nconst dataBr = (iso) => { const p = String(iso || '').split('-'); return p.length === 3 ? p[2] + '/' + p[1] + '/' + p[0] : ''; };\nconst LEADS_T = ['lead','onsite_conversion.lead_grouped','leadgen_grouped','offsite_conversion.fb_pixel_lead','onsite_web_lead'];\nconst COMPRAS_T = ['omni_purchase','purchase','offsite_conversion.fb_pixel_purchase','onsite_web_purchase'];\nconst pega = (arr, tipos) => {\n  if (!Array.isArray(arr)) return 0;\n  for (const t of tipos) {\n    const hit = arr.find(a => a.action_type === t);\n    if (hit) return Number(hit.value) || 0;\n  }\n  return 0;\n};\nconst registros = [];\nfor (const item of $input.all()) {\n  const corpo = item.json || {};\n  const lista = Array.isArray(corpo.data) ? corpo.data : [];\n  for (const r of lista) registros.push(r);\n}\nconst limpa = (s) => String(s || '').normalize('NFD').replace(/[\\u0300-\\u036f]/g, '').replace(/\\(.*?\\)/g, '').toLowerCase().trim();\nconst UF = { 'acre':'AC','alagoas':'AL','amapa':'AP','amazonas':'AM','bahia':'BA','ceara':'CE','distrito federal':'DF','federal district':'DF','espirito santo':'ES','goias':'GO','maranhao':'MA','mato grosso':'MT','mato grosso do sul':'MS','minas gerais':'MG','para':'PA','paraiba':'PB','parana':'PR','pernambuco':'PE','piaui':'PI','rio de janeiro':'RJ','rio grande do norte':'RN','rio grande do sul':'RS','rondonia':'RO','roraima':'RR','santa catarina':'SC','sao paulo':'SP','sergipe':'SE','tocantins':'TO' };\nconst linhas = [];\nfor (const r of registros) {\n  const regiao = r.region || '';\n  const leads = pega(r.actions, LEADS_T);\n  const compras = pega(r.actions, COMPRAS_T);\n  const valor = pega(r.action_values, COMPRAS_T);\n  linhas.push({ json: {\n    'Data': dataBr(r.date_start),\n    'Plataforma': 'Meta Ads',\n    'Regiao': regiao,\n    'UF': UF[limpa(regiao)] || '',\n    'Gasto': fmt(r.spend),\n    'Impressoes': inteiro(r.impressions),\n    'Cliques': inteiro(r.clicks),\n    'Leads': inteiro(leads),\n    'Compras': inteiro(compras),\n    'Valor_Compras': fmt(valor),\n    '_d': r.date_start,\n    '_gasto': Number(r.spend) || 0,\n    '_imp': parseInt(r.impressions || 0, 10) || 0,\n    '_cli': parseInt(r.clicks || 0, 10) || 0,\n    '_leads': leads,\n    '_compras': compras,\n    '_valor': valor\n  } });\n}\nreturn linhas;"
+      }
+    },
+    {
+      "id": "542706e1-61c9-4811-be34-7168b0826826",
+      "name": "Grava Regiao",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        2240,
+        0
+      ],
+      "parameters": {
+        "resource": "sheet",
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "ID_DA_PLANILHA"
+        },
+        "sheetName": {
+          "__rl": true,
+          "mode": "name",
+          "value": "Regiao"
+        },
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "value": {},
+          "schema": []
+        },
+        "options": {
+          "handlingExtraData": "ignoreIt"
+        }
+      },
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "CREDENTIAL_ID",
+          "name": "Google Sheets account"
+        }
+      },
+      "disabled": false
+    },
+    {
+      "id": "7364925a-9e9e-45ff-ac2f-f741fdc0f3e5",
+      "name": "PG: upsert campanhas",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        1800,
+        -200
+      ],
+      "parameters": {
+        "operation": "executeQuery",
+        "options": {
+          "queryReplacement": "={{ [$json._d, $json.Campanha, $json.Campanha_ID, $json._gasto, $json._imp, $json._cli, $json._cpm, $json._cpc, $json._ctr, $json._leads, $json._compras, $json._valor] }}"
+        },
+        "query": "INSERT INTO metricas_campanhas (data, plataforma, campanha, campanha_id, gasto, impressoes, cliques, cpm, cpc, ctr, leads, compras, valor_compras) VALUES ($1::date, 'Meta Ads', $2, $3, $4::numeric, $5::bigint, $6::bigint, $7::numeric, $8::numeric, $9::numeric, $10::int, $11::int, $12::numeric) ON CONFLICT (data, plataforma, campanha_id) DO UPDATE SET campanha=EXCLUDED.campanha, gasto=EXCLUDED.gasto, impressoes=EXCLUDED.impressoes, cliques=EXCLUDED.cliques, cpm=EXCLUDED.cpm, cpc=EXCLUDED.cpc, ctr=EXCLUDED.ctr, leads=EXCLUDED.leads, compras=EXCLUDED.compras, valor_compras=EXCLUDED.valor_compras"
+      },
+      "credentials": {
+        "postgres": {
+          "id": "CREDENTIAL_ID",
+          "name": "Postgres Fauth"
+        }
+      }
+    },
+    {
+      "id": "75736542-6917-45b7-84fe-92c845a5e3b1",
+      "name": "PG: upsert demografia",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        1800,
+        100
+      ],
+      "parameters": {
+        "operation": "executeQuery",
+        "options": {
+          "queryReplacement": "={{ [$json._d, $json.Idade, $json.Genero, $json._gasto, $json._imp, $json._cli, $json._leads, $json._compras, $json._valor] }}"
+        },
+        "query": "INSERT INTO metricas_demografia (data, plataforma, idade, genero, gasto, impressoes, cliques, leads, compras, valor_compras) VALUES ($1::date, 'Meta Ads', $2, $3, $4::numeric, $5::bigint, $6::bigint, $7::int, $8::int, $9::numeric) ON CONFLICT (data, plataforma, idade, genero) DO UPDATE SET gasto=EXCLUDED.gasto, impressoes=EXCLUDED.impressoes, cliques=EXCLUDED.cliques, leads=EXCLUDED.leads, compras=EXCLUDED.compras, valor_compras=EXCLUDED.valor_compras"
+      },
+      "credentials": {
+        "postgres": {
+          "id": "CREDENTIAL_ID",
+          "name": "Postgres Fauth"
+        }
+      }
+    },
+    {
+      "id": "df5a625e-542f-447d-addf-7fc5e06993f8",
+      "name": "PG: upsert regiao",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        1800,
+        400
+      ],
+      "parameters": {
+        "operation": "executeQuery",
+        "options": {
+          "queryReplacement": "={{ [$json._d, $json.Regiao, $json.UF, $json._gasto, $json._imp, $json._cli, $json._leads, $json._compras, $json._valor] }}"
+        },
+        "query": "INSERT INTO metricas_regiao (data, plataforma, regiao, uf, gasto, impressoes, cliques, leads, compras, valor_compras) VALUES ($1::date, 'Meta Ads', $2, $3, $4::numeric, $5::bigint, $6::bigint, $7::int, $8::int, $9::numeric) ON CONFLICT (data, plataforma, regiao) DO UPDATE SET uf=EXCLUDED.uf, gasto=EXCLUDED.gasto, impressoes=EXCLUDED.impressoes, cliques=EXCLUDED.cliques, leads=EXCLUDED.leads, compras=EXCLUDED.compras, valor_compras=EXCLUDED.valor_compras"
+      },
+      "credentials": {
+        "postgres": {
+          "id": "CREDENTIAL_ID",
+          "name": "Postgres Fauth"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Diariamente 04:30": {
+      "main": [
+        [
+          {
+            "node": "Define periodo",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Define periodo": {
+      "main": [
+        [
+          {
+            "node": "Meta: campanhas",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Meta: demografia",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Meta: regiao",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Meta: campanhas": {
+      "main": [
+        [
+          {
+            "node": "Trata campanhas",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Trata campanhas": {
+      "main": [
+        [
+          {
+            "node": "Grava Campanhas",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "PG: upsert campanhas",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Meta: demografia": {
+      "main": [
+        [
+          {
+            "node": "Trata demografia",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Trata demografia": {
+      "main": [
+        [
+          {
+            "node": "Grava Demografia",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "PG: upsert demografia",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Meta: regiao": {
+      "main": [
+        [
+          {
+            "node": "Trata regiao",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Trata regiao": {
+      "main": [
+        [
+          {
+            "node": "Grava Regiao",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "PG: upsert regiao",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "America/Sao_Paulo"
+  },
+  "meta": {
+    "sanitized": true,
+    "note": "Credenciais, IDs de conta e hosts internos trocados por placeholders."
+  }
+}
