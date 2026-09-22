@@ -1,0 +1,343 @@
+{
+  "name": "Publicar 100 Cards (Instagram e Facebook)",
+  "nodes": [
+    {
+      "id": "9487a1f0-9186-4c42-b3c9-36d283947f6a",
+      "name": "Todo dia as 09h",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.3,
+      "position": [
+        0,
+        0
+      ],
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "days",
+              "triggerAtHour": 9,
+              "triggerAtMinute": 0
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "7be4f1ee-385b-4cc0-b765-b0da5acb6bf2",
+      "name": "Configuracao",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        224,
+        0
+      ],
+      "parameters": {
+        "mode": "manual",
+        "includeOtherFields": false,
+        "assignments": {
+          "assignments": [
+            {
+              "id": "ig",
+              "name": "igUserId",
+              "value": "PREENCHER_IG_USER_ID",
+              "type": "string"
+            },
+            {
+              "id": "fb",
+              "name": "pageId",
+              "value": "PREENCHER_PAGE_ID",
+              "type": "string"
+            }
+          ]
+        }
+      },
+      "notes": "Preencha os dois IDs aqui. Rode o fluxo Descobrir IDs Meta para obte-los."
+    },
+    {
+      "id": "4894bb2b-b4d8-49eb-95f0-82381fb0a5eb",
+      "name": "Buscar Proximo Card",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        448,
+        0
+      ],
+      "parameters": {
+        "resource": "row",
+        "operation": "get",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "name",
+          "value": "cards_educacao_vida_real"
+        },
+        "matchType": "allConditions",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "publicado",
+              "condition": "isFalse"
+            }
+          ]
+        },
+        "returnAll": false,
+        "limit": 1,
+        "orderBy": true,
+        "orderByColumn": "numero",
+        "orderByDirection": "ASC"
+      },
+      "notes": "Pega o card de menor numero que ainda nao foi publicado. Se nao houver, o fluxo para aqui."
+    },
+    {
+      "id": "8ccb5718-56c7-4a16-8572-5dd92447e381",
+      "name": "IG: Criar Container",
+      "type": "n8n-nodes-base.facebookGraphApi",
+      "typeVersion": 1,
+      "position": [
+        672,
+        0
+      ],
+      "parameters": {
+        "authType": "accessToken",
+        "hostUrl": "graph.facebook.com",
+        "httpRequestMethod": "POST",
+        "graphApiVersion": "v25.0",
+        "node": "={{ $('Configuracao').first().json.igUserId }}",
+        "edge": "media",
+        "options": {
+          "queryParameters": {
+            "parameter": [
+              {
+                "name": "image_url",
+                "value": "={{ $json.image_url }}"
+              },
+              {
+                "name": "caption",
+                "value": "={{ $json.legenda }}"
+              }
+            ]
+          }
+        }
+      },
+      "credentials": {
+        "facebookGraphApi": {
+          "id": "CREDENTIAL_ID",
+          "name": "Facebook Graph account"
+        }
+      },
+      "notes": "Cria o container de midia. A Meta busca a imagem pela URL publica, nao recebe upload."
+    },
+    {
+      "id": "4c26d610-ef32-43d2-ab47-7a56d73ae754",
+      "name": "Esperar Processar",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        896,
+        0
+      ],
+      "parameters": {
+        "resume": "timeInterval",
+        "amount": 45,
+        "unit": "seconds"
+      },
+      "notes": "A Meta precisa baixar e processar a imagem antes de publicar o container.",
+      "webhookId": "89c5e843-41b6-4c96-a777-dd745ffbea5a"
+    },
+    {
+      "id": "a5ef9ba5-51a7-4423-897d-4367da2aa0bf",
+      "name": "IG: Publicar",
+      "type": "n8n-nodes-base.facebookGraphApi",
+      "typeVersion": 1,
+      "position": [
+        1120,
+        0
+      ],
+      "parameters": {
+        "authType": "accessToken",
+        "hostUrl": "graph.facebook.com",
+        "httpRequestMethod": "POST",
+        "graphApiVersion": "v25.0",
+        "node": "={{ $('Configuracao').first().json.igUserId }}",
+        "edge": "media_publish",
+        "options": {
+          "queryParameters": {
+            "parameter": [
+              {
+                "name": "creation_id",
+                "value": "={{ $('IG: Criar Container').first().json.id }}"
+              }
+            ]
+          }
+        }
+      },
+      "credentials": {
+        "facebookGraphApi": {
+          "id": "CREDENTIAL_ID",
+          "name": "Facebook Graph account"
+        }
+      }
+    },
+    {
+      "id": "d0d12ddd-f017-4e8a-936b-1a558af29871",
+      "name": "FB: Publicar Foto",
+      "type": "n8n-nodes-base.facebookGraphApi",
+      "typeVersion": 1,
+      "position": [
+        1344,
+        0
+      ],
+      "parameters": {
+        "authType": "accessToken",
+        "hostUrl": "graph.facebook.com",
+        "httpRequestMethod": "POST",
+        "graphApiVersion": "v25.0",
+        "node": "={{ $('Configuracao').first().json.pageId }}",
+        "edge": "photos",
+        "options": {
+          "queryParameters": {
+            "parameter": [
+              {
+                "name": "url",
+                "value": "={{ $('Buscar Proximo Card').first().json.image_url }}"
+              },
+              {
+                "name": "message",
+                "value": "={{ $('Buscar Proximo Card').first().json.legenda }}"
+              }
+            ]
+          }
+        }
+      },
+      "credentials": {
+        "facebookGraphApi": {
+          "id": "CREDENTIAL_ID",
+          "name": "Facebook Graph account"
+        }
+      }
+    },
+    {
+      "id": "60256cc2-2527-4b8d-b426-33e76e53dc57",
+      "name": "Marcar Publicado",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        1568,
+        0
+      ],
+      "parameters": {
+        "resource": "row",
+        "operation": "update",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "name",
+          "value": "cards_educacao_vida_real"
+        },
+        "matchType": "allConditions",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "numero",
+              "condition": "eq",
+              "keyValue": "={{ $('Buscar Proximo Card').first().json.numero }}"
+            }
+          ]
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "publicado": true,
+            "ig_media_id": "={{ $('IG: Publicar').first().json.id }}",
+            "fb_post_id": "={{ $json.post_id || $json.id }}"
+          }
+        }
+      },
+      "notes": "Fecha o ciclo. Sem isso o mesmo card sairia de novo amanha."
+    }
+  ],
+  "connections": {
+    "Todo dia as 09h": {
+      "main": [
+        [
+          {
+            "node": "Configuracao",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Configuracao": {
+      "main": [
+        [
+          {
+            "node": "Buscar Proximo Card",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Buscar Proximo Card": {
+      "main": [
+        [
+          {
+            "node": "IG: Criar Container",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IG: Criar Container": {
+      "main": [
+        [
+          {
+            "node": "Esperar Processar",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Esperar Processar": {
+      "main": [
+        [
+          {
+            "node": "IG: Publicar",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IG: Publicar": {
+      "main": [
+        [
+          {
+            "node": "FB: Publicar Foto",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "FB: Publicar Foto": {
+      "main": [
+        [
+          {
+            "node": "Marcar Publicado",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "meta": {
+    "sanitized": true,
+    "note": "Credenciais, IDs de conta e hosts internos trocados por placeholders."
+  }
+}
