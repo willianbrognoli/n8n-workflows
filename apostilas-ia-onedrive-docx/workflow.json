@@ -1,0 +1,941 @@
+{
+  "name": "Águia Deep - Apostilas automáticas (OneDrive → Gemini → Claude → Docx)",
+  "nodes": [
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "cfg-renderer",
+              "name": "rendererUrl",
+              "type": "string",
+              "value": "http://n8n_renderdocx:8000"
+            },
+            {
+              "id": "cfg-folder",
+              "name": "folderId",
+              "type": "string",
+              "value": "ID_DA_PASTA_ONEDRIVE"
+            },
+            {
+              "id": "cfg-model",
+              "name": "modelId",
+              "type": "string",
+              "value": "claude-sonnet-4-6"
+            },
+            {
+              "id": "cfg-model-questoes",
+              "name": "modelQuestoes",
+              "type": "string",
+              "value": "claude-haiku-4-5"
+            },
+            {
+              "id": "cfg-model-gemini-pesquisa",
+              "name": "geminiModelPesquisa",
+              "type": "string",
+              "value": "gemini-3.6-flash"
+            },
+            {
+              "id": "cfg-model-gemini-verificacao",
+              "name": "geminiModelVerificacao",
+              "type": "string",
+              "value": "gemini-3.6-flash"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "e1f10f68-f5a1-4498-82c9-c44e66d14b14",
+      "name": "Config",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        224,
+        192
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const pastas = $input.all().filter(i => i.json && i.json.folder);\n// OneDrive/Graph: pasta é o item que tem o campo \"folder\".\n// OK = entregue; EXE = em processamento por outra execução: ambas são ignoradas.\nconst pend = pastas.filter(i => !/^\\s*(OK|EXE)\\b/i.test(i.json.name || ''));\npend.sort((a, b) => new Date(a.json.createdDateTime || 0) - new Date(b.json.createdDateTime || 0));\nreturn pend.length ? pend : [{ json: { raizApenas: true } }];"
+      },
+      "id": "f7c98bc2-44a4-4bc5-adaf-046b39a0a6c6",
+      "name": "Filtrar subpastas",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        672,
+        192
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const sub = $input.all().map(i => i.json);\n// mapa id da pasta -> nome e data (vem do Filtrar subpastas, já sem OK/EXE)\nconst pastas = {}, criado = {};\nfor (const it of $('Filtrar subpastas').all().map(i => i.json)) {\n  if (it && it.id && it.name) { pastas[it.id] = it.name; criado[it.id] = it.createdDateTime || ''; }\n}\nconst grupos = {}, ultimaMod = {};\nfor (const f of sub) {\n  if (!f || !f.id || !f.name) continue;\n  if (f.folder) continue; // subpasta aninhada não entra como arquivo\n  const nome = f.name;\n  if (!nome.toLowerCase().endsWith('.docx')) continue;\n  if (nome.includes('(Águia') || nome.includes('(Aguia')) continue;\n  const pai = (f.parentReference && f.parentReference.id) || null;\n  const nomePasta = pai ? pastas[pai] : null;\n  if (!nomePasta) continue;\n  const mod = new Date(f.lastModifiedDateTime || 0).getTime();\n  if (!ultimaMod[pai] || mod > ultimaMod[pai]) ultimaMod[pai] = mod;\n  const mOrd = nome.match(/^(\\d+(?:\\.\\d+)*)/);\n  const grupo = 'pasta:' + pai;\n  const ordem = mOrd ? mOrd[1] : '999';\n  const mp = nomePasta.match(/^(\\d+)/);\n  const prefixo = mp ? mp[1] : nomePasta.replace(/[^\\w\\d]+/g, ' ').trim();\n  const ehQuestoes = /QUEST/i.test(nome) && !/TEORIA/i.test(nome);\n  if (!grupos[grupo]) grupos[grupo] = [];\n  grupos[grupo].push({ id: f.id, nome, ordem, prefixo, tipo: ehQuestoes ? 'questoes' : 'material', pasta: pai });\n}\nconst chave = o => String(o).split('.').map(Number);\nconst cmp = (a, b) => {\n  const A = chave(a.ordem), B = chave(b.ordem);\n  for (let i = 0; i < Math.max(A.length, B.length); i++) {\n    const d = (A[i] || 0) - (B[i] || 0);\n    if (d) return d;\n  }\n  return a.tipo === 'material' ? -1 : 1;\n};\nconst ASSENTAMENTO_MS = 3 * 60 * 1000; // pasta só roda 3 min após o último upload\nconst agora = Date.now();\nconst saida = [];\nfor (const arquivos of Object.values(grupos)) {\n  const materiais = arquivos.filter(a => a.tipo === 'material').sort(cmp);\n  const questoes = arquivos.filter(a => a.tipo === 'questoes').sort(cmp);\n  if (!materiais.length || !questoes.length) continue;\n  const pai = materiais[0].pasta;\n  if (ultimaMod[pai] && (agora - ultimaMod[pai]) < ASSENTAMENTO_MS) continue; // upload ainda em andamento\n  saida.push({ json: { prefixo: materiais[0].prefixo, pastaDestino: pai, nomePasta: pastas[pai] || null, criadoEm: criado[pai] || '', arquivos: [...materiais, ...questoes] } });\n}\nsaida.sort((a, b) => new Date(a.json.criadoEm || 0) - new Date(b.json.criadoEm || 0));\nreturn saida;"
+      },
+      "id": "b64677e5-93c7-4501-918a-573afc5eee57",
+      "name": "Parear material e questões",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1120,
+        192
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "fim-1",
+              "name": "status",
+              "value": "ciclo concluído",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "a2b98ea4-7b2f-46e1-987a-11a7771b540f",
+      "name": "Fim do ciclo",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1792,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const g = $('Processar um par').first().json;\nreturn g.arquivos.map((a, i) => ({ json: { fileId: a.id, nome: a.nome, tipo: a.tipo, ordem: a.ordem, idx: i } }));"
+      },
+      "id": "6a8e46c5-e00e-400b-bcdf-fe6371115071",
+      "name": "Explodir arquivos do grupo",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1792,
+        192
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Config').first().json.rendererUrl }}/extract",
+        "sendBody": true,
+        "contentType": "multipart-form-data",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "parameterType": "formBinaryData",
+              "name": "file",
+              "inputDataFieldName": "data"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 120000
+        }
+      },
+      "id": "c897ec62-a412-4cf3-a0f1-0ba6c16496f9",
+      "name": "Extrair texto",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        2240,
+        192
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const metas = $('Explodir arquivos do grupo').all();\nconst resp = $input.all();\nif (metas.length !== resp.length) throw new Error(`Extração incompleta: ${resp.length} de ${metas.length} arquivos`);\nconst material = [], questoes = [];\nconst imagens = {};\nlet prox = 1;\nfor (let i = 0; i < resp.length; i++) {\n  const meta = metas[i].json;\n  let texto = resp[i].json.text || '';\n  const imgs = resp[i].json.images || [];\n  const mapa = {};\n  for (const im of imgs) {\n    mapa[im.n] = prox;\n    imagens[String(prox)] = { base64: im.base64, mime: im.mime };\n    prox++;\n  }\n  texto = texto.replace(/\\[IMAGEM (\\d+)\\]/g, (mm, n) => mapa[n] ? `[IMAGEM ${mapa[n]}]` : '');\n  const bloco = `\\n\\n===== PARTE ${meta.ordem} (${meta.nome}) =====\\n${texto}`;\n  if (meta.tipo === 'material') material.push(bloco); else questoes.push(bloco);\n}\nreturn [{ json: {\n  prefixo: $('Processar um par').first().json.prefixo,\n  nomePasta: $('Processar um par').first().json.nomePasta || null,\n  nomesArquivos: metas.map(m => m.json.nome),\n  materialTexto: material.join('\\n'),\n  questoesTexto: questoes.join('\\n'),\n  imagens\n} }];"
+      },
+      "id": "bab17e2a-ca59-44f2-8975-708686d49dd3",
+      "name": "Juntar textos",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2464,
+        192
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const j = $('Juntar textos').first().json;\nconst nomes = Array.isArray(j.nomesArquivos) ? j.nomesArquivos.join('; ') : '';\nconst linhaTema = 'Matéria e tema desta aula: ' + (j.nomePasta ? 'a pasta da aula se chama \"' + j.nomePasta + '\". ' : '') + (nomes ? 'Os arquivos originais são: ' + nomes + '. ' : '') + 'Esses nomes também aparecem nos cabeçalhos ===== PARTE N (nome do arquivo) ===== dentro do material colado. Identifique com precisão a matéria (ex.: RLM, Direito Penal, Português) e o tema específico a partir do nome da pasta, dos nomes dos arquivos e do conteúdo, e dedique o complemento exclusivamente a esse tema.';\nconst prompt = ['Estou estudando para concursos e preciso que você crie um material COMPLEMENTAR sobre o tema abaixo. Em vez de PDF anexado, o material teórico (transcrição de aulas) e as questões reais de concurso vão colados no final desta mensagem.',\nlinhaTema,\n'',\n'Use português brasileiro claro, natural e didático, como um professor experiente explicando o assunto para um aluno de concurso.',\n'Importante: O padrão de linguagem deverá ser mantido do primeiro parágrafo até a última linha do documento, sem se tornar mais rebuscado nas seções finais. sem se tornar mais rebuscado nas seções finais. sem se tornar mais rebuscado nas seções finais. Mantenha o padrão no documento inteiro. Certifique-se que no final do documento você não começou a usar palavras difíceis do nada, esse é um erro que você vem cometendo. A linguagem fica boa, mas no final fica horrível.',\n'Atenção: Não use uma linguagem rebuscada, tenha equilíbrio.',\n'',\n'PROIBIDO CITAR BANCAS: não mencione o nome de NENHUMA banca examinadora (FGV, CEBRASPE, CESPE, FCC, Vunesp, Quadrix, Cesgranrio, AOCP, IBFC, Fundação Carlos Chagas, Instituto AOCP ou qualquer outra) e não cite concursos ou provas específicas com nome de órgão e ano. Ao falar de como o assunto é cobrado, use sempre referência genérica: \"a banca\", \"as bancas\", \"as provas\", \"os examinadores\".',\n'',\n'TAMANHO OBRIGATÓRIO: o complemento deve ter NO MÍNIMO 5.000 palavras (mire entre 5.000 e 8.000). Este material vai AMPLIAR uma apostila: complemento curto não serve e será rejeitado.',\n'',\n'PAUTA OBRIGATÓRIA (desenvolva TODAS as seções abaixo, cada uma com profundidade real):',\n'1. Teoria expandida: cada conceito do tema explicado por completo, incluindo os que a transcrição cobre por alto.',\n'2. Conceitos vizinhos que as provas cobram junto com o tema (e como diferenciá-los).',\n'3. Exemplos resolvidos passo a passo: no mínimo 5 exemplos inéditos, do básico ao difícil, com a resolução completa comentada.',\n'4. Pegadinhas recorrentes de prova no tema: liste e explique cada uma, com o jeito certo de desarmar (sempre em referência genérica à banca, sem nomear).',\n'5. Erros mais comuns do candidato e como evitá-los.',\n'6. Atualizações relevantes (lei, entendimento, nomenclatura) se houver.',\n'',\n'Pesquise na web (Google Search) para construir essas seções: priorize o que o material teórico colado NÃO cobre ou cobre superficialmente. Você vai indicar em **negrito com asteriscos duplos** as partes mais importantes.',\n'As questões coladas servem de base: podem haver questões que fogem do tema e questões com gabaritos absurdos, ignore-as, se dedique exclusivamente sobre o tema solicitado. Não mencione os números das questões. Analise todas as questões.',\n'',\n'REGRAS DE FORMA: texto corrido organizado em seções com títulos simples em linha própria; travessão (—) é PROIBIDO, use dois pontos, vírgula ou ponto; sem tabelas; sem citar URLs no corpo do texto; responda SOMENTE com o material complementar, sem preâmbulo e sem conclusão sobre a tarefa.',\n'',\n'<<<MATERIAL_TEORICO',\nj.materialTexto || '',\n'MATERIAL_TEORICO>>>',\n'',\n'<<<QUESTOES',\nj.questoesTexto || '',\n'QUESTOES>>>'].join('\\n');\nconst body = {\n  contents: [{ role: 'user', parts: [{ text: prompt }] }],\n  tools: [{ google_search: {} }],\n  generationConfig: { maxOutputTokens: 65536 }\n};\nreturn [{ json: { prefixo: j.prefixo, bodyString: JSON.stringify(body) } }];"
+      },
+      "id": "91ddab0d-6b2d-4725-81b6-2efda36ebbe1",
+      "name": "Montar pesquisa Gemini",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2688,
+        192
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://generativelanguage.googleapis.com/v1beta/models/{{ $('Config').first().json.geminiModelPesquisa }}:generateContent",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $json.bodyString }}",
+        "options": {
+          "timeout": 600000
+        }
+      },
+      "id": "9495f2dc-70c5-43a1-ad82-8601db7fdd8d",
+      "name": "Pesquisar com Gemini",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        2912,
+        192
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "CREDENTIAL_ID",
+          "name": "teste a"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "function textoGemini(j) {\n  const c = (j.candidates && j.candidates[0]) || {};\n  const parts = (c.content && c.content.parts) || [];\n  return parts.map(p => p.text || '').join('').trim();\n}\nconst complemento = textoGemini($input.first().json);\nif (!complemento) throw new Error('Pesquisa Gemini voltou vazia');\nconst j = $('Juntar textos').first().json;\nconst prompt = ['Você é o revisor técnico de material de concurso. Abaixo estão (1) o material bruto original e (2) um COMPLEMENTO gerado por pesquisa. Sua tarefa: verificar o COMPLEMENTO com pesquisa na web (Google Search) e devolver a versão final corrigida.',\n'',\n'PROTOCOLO DE VERIFICAÇÃO (obrigatório):',\n'1. Toda afirmação VERIFICÁVEL do complemento (número de lei, artigo, parágrafo, súmula, tese, data, percentual, prazo, nome de órgão, definição técnica, fórmula, gabarito de regra) deve ser CONFIRMADA por busca no Google antes de ser mantida. Não aprove por plausibilidade: confira na fonte.',\n'2. Achou erro? CORRIJA no lugar, substituindo pela versão correta do mesmo ponto (não deixe buraco). Remoção pura só para afirmação falsa sem correção possível.',\n'3. CONFLITO com o material original: se o complemento contradisser o material original, prevalece o que a busca confirmar na fonte oficial. Se o complemento estiver errado, corrija-o. Se o original é que estiver desatualizado ou errado, mantenha no complemento a versão correta confirmada, deixando-a claramente afirmada (sem mencionar que há divergência com o material).',\n'4. BANCAS: se o complemento citar nome de banca examinadora (FGV, CEBRASPE, CESPE, FCC, Vunesp, Quadrix, Cesgranrio, AOCP, IBFC ou qualquer outra) ou concurso específico com órgão e ano, SUBSTITUA por referência genérica (\"a banca\", \"as provas\", \"os examinadores\"), mantendo o conteúdo da frase. O texto final não pode conter nome de banca.',\n'5. Não acrescente assunto novo que não esteja no complemento.',\n'',\n'PROIBIDO RESUMIR: fora as correções do protocolo, o texto final deve ter praticamente o MESMO TAMANHO do complemento recebido (ou maior, se uma correção exigir explicação). Devolver versão encurtada é erro grave. Mantenha todas as seções, exemplos e desenvolvimentos que passarem na verificação.',\n'Mantenha o mesmo padrão de linguagem do primeiro ao último parágrafo, sem rebuscar nas seções finais. Mantenha os **negritos** existentes. Travessão (—) é PROIBIDO: use dois pontos, vírgula ou ponto.',\n'Responda SOMENTE com a versão final corrigida do complemento, sem preâmbulo, sem relatório da revisão, sem comentários.',\n'',\n'<<<MATERIAL_ORIGINAL',\nj.materialTexto || '',\n'MATERIAL_ORIGINAL>>>',\n'',\n'<<<COMPLEMENTO',\ncomplemento,\n'COMPLEMENTO>>>'].join('\\n');\nconst body = {\n  contents: [{ role: 'user', parts: [{ text: prompt }] }],\n  tools: [{ google_search: {} }],\n  generationConfig: { maxOutputTokens: 65536 }\n};\nreturn [{ json: { prefixo: j.prefixo, complementoBruto: complemento, bodyString: JSON.stringify(body) } }];"
+      },
+      "id": "e3a23c31-7ca9-4796-8bc5-ad468eaec7c4",
+      "name": "Montar verificação Gemini",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3136,
+        192
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://generativelanguage.googleapis.com/v1beta/models/{{ $('Config').first().json.geminiModelVerificacao }}:generateContent",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $json.bodyString }}",
+        "options": {
+          "timeout": 600000
+        }
+      },
+      "id": "8dad2cdd-f4ee-4800-8722-b3068161d1e8",
+      "name": "Verificar com Gemini",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        3360,
+        192
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "CREDENTIAL_ID",
+          "name": "teste a"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "function textoGemini(j) {\n  const c = (j.candidates && j.candidates[0]) || {};\n  const parts = (c.content && c.content.parts) || [];\n  return parts.map(p => p.text || '').join('').trim();\n}\nlet complemento = textoGemini($input.first().json);\nif (!complemento) complemento = $('Montar verificação Gemini').first().json.complementoBruto || '';\ncomplemento = complemento.replace(/\\u2014/g, ':');\nconst j = $('Juntar textos').first().json;\nconst materialTexto = (j.materialTexto || '') +\n  '\\n\\n===== COMPLEMENTO DE PESQUISA VERIFICADO (Gemini) =====\\n' + complemento;\nreturn [{ json: {\n  prefixo: j.prefixo,\n  materialTexto,\n  questoesTexto: j.questoesTexto || '',\n  tamanhoOriginal: (j.materialTexto || '').length,\n  tamanhoComplemento: complemento.length\n} }];"
+      },
+      "id": "ab62e614-89f1-4cb3-ad58-13bc0d8c417e",
+      "name": "Engordar material",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3584,
+        192
+      ]
+    },
+    {
+      "parameters": {
+        "modelId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "={{ $('Config').first().json.modelQuestoes }}"
+        },
+        "messages": {
+          "values": [
+            {
+              "content": "=QUESTÕES REAIS DE BANCA (arquivos de questões, em partes ordenadas):\n<<<QUESTOES\n{{ $('Juntar textos').item.json.questoesTexto }}\nQUESTOES>>>\n\nMATERIAL DAS AULAS (pode conter questões reais de banca embutidas no meio da teoria; garimpe TODAS as que tiverem cabeçalho de banca e acrescente após as do bloco QUESTOES, sem duplicar):\n<<<MATERIAL\n{{ $('Juntar textos').item.json.materialTexto }}\nMATERIAL>>>\n\nRenumere tudo em sequência única de 01 em diante, na ordem das partes (primeiro as do bloco QUESTOES, depois as embutidas no MATERIAL). Produza agora o JSON de questões, comentários e gabarito conforme as instruções do sistema. Responda APENAS com o JSON, sem markdown, sem comentários."
+            }
+          ]
+        },
+        "options": {
+          "includeMergedResponse": true,
+          "system": "Você monta a seção de questões de uma apostila de concursos a partir de um arquivo de questões reais de banca. Sua saída é EXCLUSIVAMENTE um JSON válido (sem cercas de código) no schema abaixo.\n\nSCHEMA:\n{\"questoes\": [{\"cabecalho\": \"01. (BANCA / Órgão / Ano) Enunciado.\", \"corpo\": [\"afirmativa ou alternativas\"], \"certo_errado\": true}], \"comentarios\": [{\"cabecalho\": \"01. (BANCA / Órgão / Ano)\", \"gabarito\": \"Errado\", \"comentario\": \"...\"}], \"gabarito\": [{\"n\": 1, \"g\": \"Errado\"}]}\n\nMARCAS INLINE (válidas APENAS no campo comentario): **negrito**, __negrito sublinhado__, %%negrito vermelho (alerta crítico, raro)%%.\n\nNOTAÇÃO DE LÓGICA (RLM): a disjunção exclusiva (ou...ou) é escrita SEMPRE como __∨__ (o renderizador aplica o sublinhado do símbolo, em peso normal). NUNCA use **∨** nem ∨ sem marca para representar a disjunção exclusiva. Os demais símbolos lógicos (∧, ∨ inclusivo, ¬, ~, →, ↔, ∀, ∃) vão SEM marcas. Esta notação vale TAMBÉM no corpo das questões: __∨__ é notação matemática, não ênfase, e é a única marca permitida em enunciados e alternativas (preserve o __∨__ quando o arquivo trouxer o ∨ sublinhado).\n\nREGRAS INVIOLÁVEIS:\n1. BLOQUEIO ZERO: travessão (—) é PROIBIDO em qualquer texto. Substitua por dois pontos, vírgula ou ponto.\n2. QUESTÕES: use EXCLUSIVAMENTE as questões reais do arquivo, renumeradas de 01 em diante na ordem das partes, mantendo banca, órgão, ano e texto originais (corrija só erros evidentes de OCR). Enunciados e alternativas saem LIMPOS, sem marcas ** __ %% (remova as que vierem do arquivo; exceção única: o __∨__ da disjunção exclusiva, conforme NOTAÇÃO DE LÓGICA). Não invente, não omita e não duplique questão: se a mesma questão aparecer duas vezes no arquivo (enunciado e depois enunciado com gabarito), ela entra UMA vez. Questões de Certo/Errado recebem \"certo_errado\": true. Questões de múltipla escolha listam as alternativas em \"corpo\" (uma por linha: \"A) ...\").\n3. IMAGENS DAS QUESTÕES: o arquivo pode conter marcadores [IMAGEM N] (texto de apoio, charge, campanha, tirinha). PRESERVE cada marcador EXATAMENTE como está, como uma LINHA PRÓPRIA do \"corpo\" da questão correspondente, na posição em que aparece (em geral antes da afirmativa). NUNCA remova, renumere ou descreva o marcador: o sistema o substitui pela imagem real. A regra de limpeza do item 2 NÃO se aplica aos marcadores [IMAGEM N].\n4. COMENTÁRIOS: TODAS as questões entram em \"comentarios\", na MESMA ordem e com o MESMO cabecalho de \"questoes\", contendo APENAS cabecalho, gabarito e comentario (o sistema copia o corpo da questão automaticamente, incluindo os marcadores de imagem; NÃO repita o corpo nem as alternativas). Comentário técnico direto de 2 a 5 frases: por que o gabarito está certo e onde mora o erro dos distratores, com **negrito** nos 2 a 4 termos decisivos e __sublinhado__ em 1 a 2 expressões-chave por comentário; %%vermelho%% só para alerta que evita erro grave. Quando o arquivo já trouxer gabarito e comentário, use-os como base, reescrevendo em texto limpo e sem travessão, preservando os __sublinhados__ e %%vermelhos%% que vierem marcados no comentário original.\n5. GABARITO: uma entrada por questão, na ordem. Para múltipla escolha use a letra (\"B\"), para Certo/Errado use \"Certo\" ou \"Errado\" (no campo gabarito dos comentários de múltipla escolha use \"Letra B\").\n6. Mencione FGV normalmente quando a banca for FGV.\n7. Saída: SOMENTE o JSON, primeira linha começa com { e última termina com }.",
+          "maxTokens": 64000,
+          "temperature": 0.2
+        }
+      },
+      "id": "27c59aa8-726f-4394-80d9-5b79804baeaa",
+      "name": "Gerar questões e comentários",
+      "type": "@n8n/n8n-nodes-langchain.anthropic",
+      "typeVersion": 1,
+      "position": [
+        4096,
+        0
+      ],
+      "credentials": {
+        "anthropicApi": {
+          "id": "CREDENTIAL_ID",
+          "name": "Anthropic account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "function sanearEstrutura(s) {\n  // descarta } ou ] espúrios (fechamento a mais no meio do JSON), fora de strings\n  let out = '', stack = [], inStr = false, esc = false;\n  for (let idx = 0; idx < s.length; idx++) {\n    const ch = s[idx];\n    if (inStr) { out += ch; if (esc) esc = false; else if (ch === '\\\\') esc = true; else if (ch === '\"') inStr = false; continue; }\n    if (ch === '\"') { inStr = true; out += ch; continue; }\n    if (ch === '{' || ch === '[') { stack.push(ch); out += ch; continue; }\n    if (ch === '}' || ch === ']') {\n      const esperado = ch === '}' ? '{' : '[';\n      if (stack.length && stack[stack.length - 1] === esperado) { stack.pop(); out += ch; }\n      continue;\n    }\n    out += ch;\n  }\n  return out;\n}\nfunction stripTrailingCommas(s) {\n  let out = '', inStr = false, esc = false;\n  for (let i = 0; i < s.length; i++) {\n    const ch = s[i];\n    if (inStr) { out += ch; if (esc) esc = false; else if (ch === '\\\\') esc = true; else if (ch === '\"') inStr = false; continue; }\n    if (ch === '\"') { inStr = true; out += ch; continue; }\n    if (ch === ',') { let j = i + 1; while (j < s.length && /\\s/.test(s[j])) j++; if (s[j] === ']' || s[j] === '}') continue; }\n    out += ch;\n  }\n  return out;\n}\nfunction repararJson(s) {\n  let stack = [], inStr = false, esc = false;\n  for (const ch of s) {\n    if (inStr) { if (esc) esc = false; else if (ch === '\\\\') esc = true; else if (ch === '\"') inStr = false; continue; }\n    if (ch === '\"') inStr = true;\n    else if (ch === '{' || ch === '[') stack.push(ch);\n    else if (ch === '}' || ch === ']') { if (stack.length) stack.pop(); }\n  }\n  if (inStr) s += '\"';\n  for (let i = stack.length - 1; i >= 0; i--) s += stack[i] === '{' ? '}' : ']';\n  return s;\n}\nfunction parseResiliente(fatia) {\n  const tentativas = [\n    x => x,\n    x => stripTrailingCommas(x),\n    x => sanearEstrutura(x),\n    x => stripTrailingCommas(sanearEstrutura(x)),\n    x => stripTrailingCommas(repararJson(sanearEstrutura(x))),\n    x => stripTrailingCommas(repararJson(x)),\n  ];\n  let err;\n  for (const t of tentativas) {\n    try { return JSON.parse(t(fatia)); } catch (e) { if (!err) err = e; }\n  }\n  throw new Error('JSON da IA irrecuperável: ' + err.message);\n}\n\nfunction extrairJson(j) {\n  let s = j.merged || j.merged_response || (Array.isArray(j.content) ? j.content.filter(c => c.type === 'text').map(c => c.text).join('\\n') : '') || j.text || '';\n  s = s.trim();\n  if (s.startsWith('```')) {\n    s = s.replace(/^```(?:json)?\\s*/, '').replace(/```\\s*$/, '');\n  }\n  s = s.replace(/\"text\"\\s*:/g, '\"texto\":');\n  const i = s.indexOf('{');\n  const f = s.lastIndexOf('}');\n  if (i === -1 || f === -1) throw new Error('Resposta da IA sem JSON');\n  return parseResiliente(s.slice(i, f + 1));\n}\n\nfunction separaCabecalho(cab) {\n  cab = String(cab || '');\n  if (!/^\\s*\\d+\\s*\\.\\s*\\(/.test(cab)) return null;\n  const abre = cab.indexOf('(');\n  let depth = 0;\n  for (let k = abre; k < cab.length; k++) {\n    if (cab[k] === '(') depth++;\n    else if (cab[k] === ')') {\n      depth--;\n      if (depth === 0) {\n        return { cabecalho: cab.slice(0, k + 1), resto: cab.slice(k + 1).trim() };\n      }\n    }\n  }\n  return null;\n}\n\nconst teoria = extrairJson($('Gerar conteúdo estruturado').first().json);\nconst quest = extrairJson($input.first().json);\n\nlet questoesArr = Array.isArray(quest.questoes) ? quest.questoes : [];\nlet comentariosArr = Array.isArray(quest.comentarios) ? quest.comentarios : [];\nlet gabaritoArr = Array.isArray(quest.gabarito) ? quest.gabarito : [];\n\nfor (const c of comentariosArr) {\n  if (c && Array.isArray(c.gabarito)) {\n    if (!gabaritoArr.length) gabaritoArr = c.gabarito;\n    c.gabarito = '';\n  }\n}\ncomentariosArr = comentariosArr.filter(c => c && (\n  (c.cabecalho && String(c.cabecalho).trim()) ||\n  (c.comentario && String(c.comentario).trim()) ||\n  (Array.isArray(c.corpo) && c.corpo.some(x => String(x || '').trim()))\n));\n\nquestoesArr = questoesArr.map(q => {\n  if (!q) return q;\n  const corpoUtil = Array.isArray(q.corpo) ? q.corpo.filter(x => String(x || '').trim()) : [];\n  if (!corpoUtil.length) {\n    const sep = separaCabecalho(q.cabecalho);\n    if (sep && sep.resto) {\n      q = Object.assign({}, q, { cabecalho: sep.cabecalho, corpo: [sep.resto] });\n      return q;\n    }\n  }\n  q.corpo = corpoUtil.length ? corpoUtil : (Array.isArray(q.corpo) ? q.corpo : []);\n  return q;\n});\n\nconst dados = {\n  titulo: teoria.titulo || 'Material',\n  apresentacao: teoria.apresentacao || [],\n  capitulos: teoria.capitulos || [],\n  questoes: questoesArr,\n  comentarios: comentariosArr,\n  gabarito: gabaritoArr\n};\n\ndados.comentarios = dados.comentarios.map((c, i) => {\n  const q = dados.questoes[i] || {};\n  let g = c.gabarito;\n  if (g == null || Array.isArray(g)) g = '';\n  let corpo = (Array.isArray(c.corpo) && c.corpo.some(x => String(x || '').trim())) ? c.corpo : (Array.isArray(q.corpo) ? q.corpo : []);\n  if (!corpo.some(x => String(x || '').trim())) {\n    const sep = separaCabecalho(c.cabecalho);\n    if (sep && sep.resto) corpo = [sep.resto];\n  }\n  return {\n    cabecalho: c.cabecalho || q.cabecalho || '',\n    corpo: corpo,\n    gabarito: String(g),\n    comentario: c.comentario || ''\n  };\n});\n\nif (gabaritoArr.length < dados.questoes.length) {\n  for (let i = 0; i < dados.questoes.length; i++) {\n    if (!gabaritoArr[i]) {\n      const g = String((dados.comentarios[i] || {}).gabarito || '').trim();\n      const m = /^letra\\s*([a-e])$/i.exec(g);\n      gabaritoArr[i] = { n: i + 1, g: m ? m[1].toUpperCase() : g };\n    }\n  }\n  dados.gabarito = gabaritoArr;\n}\ndados.comentarios = dados.comentarios.map((c, i) => {\n  if (!c.gabarito && dados.gabarito[i] && dados.gabarito[i].g) {\n    const g = String(dados.gabarito[i].g);\n    c.gabarito = /^[A-E]$/.test(g) ? ('Letra ' + g) : g;\n  }\n  return c;\n});\n\ndados.imagens = $('Juntar textos').first().json.imagens || {};\nconst prefixo = $('Processar um par').first().json.prefixo;\nconst titulo = (dados.titulo || 'Material').replace(/[\\\\/:*?\"<>|]/g, '');\nconst filename = `Aula ${prefixo} - ${titulo} (Águia Deep).docx`;\n\nconst payload = {\n  data: dados,\n  filename: filename,\n  paginate: true\n};\n\nreturn [{ json: { prefixo, filename, payloadString: JSON.stringify(payload) } }];"
+      },
+      "id": "b8919be8-ed34-403c-8558-312351c2749f",
+      "name": "Montar payload do renderizador",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4256,
+        192
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Config').first().json.rendererUrl }}/render",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $json.payloadString }}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "file"
+            }
+          },
+          "timeout": 600000
+        }
+      },
+      "id": "e90e54cc-eff6-4ce7-9a41-c0bbda6b88a5",
+      "name": "Renderizar docx",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        4480,
+        192
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://n8n_stirlingpdf:8080/api/v1/convert/file/pdf",
+        "sendBody": true,
+        "contentType": "multipart-form-data",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "parameterType": "formBinaryData",
+              "name": "fileInput",
+              "inputDataFieldName": "data"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "file"
+            }
+          },
+          "timeout": 300000
+        }
+      },
+      "id": "84d87091-6d45-4b2b-86c5-5b2c14ff8f8b",
+      "name": "Converter em PDF",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        5376,
+        192
+      ]
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "id": "ffb54544-1a50-4f16-bddb-63c7598af398",
+      "name": "Processar um par",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        1568,
+        192
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const m = $('Engordar material').first().json;\nconst system = 'Você é o professor produzindo uma apostila da marca Águia - Carreiras Policiais a partir da transcrição de uma aula, de um COMPLEMENTO DE PESQUISA VERIFICADO e de um arquivo de questões reais de banca. Sua saída é EXCLUSIVAMENTE um JSON válido (sem cercas de código) no schema abaixo.\\n\\nSCHEMA:\\n{\"titulo\": \"TÍTULO EM CAIXA ALTA\", \"apresentacao\": [\"par1\", \"par2\"], \"capitulos\": [{\"titulo\": \"CAPÍTULO 1 — NOME\", \"blocos\": [{\"tipo\": \"paragrafo\", \"texto\": \"...\"}, {\"tipo\": \"subtitulo\", \"texto\": \"...\"}, {\"tipo\": \"tabela\", \"colunas\": [\"A\",\"B\",\"C\"], \"linhas\": [[\"1\",\"2\",\"3\"]], \"legenda\": \"...\"}, {\"tipo\": \"imagem\", \"ref\": 1, \"legenda\": \"...\"}, {\"tipo\": \"mnemonico\", \"titulo\": \"...\", \"texto\": \"...\"}, {\"tipo\": \"dica\", \"texto\": \"...\"}, {\"tipo\": \"lei\", \"fonte\": \"Lei X, art. Y\", \"texto\": \"...\"}, {\"tipo\": \"jurisprudencia\", \"tribunal\": \"STF\", \"referencia\": \"Súmula N\", \"texto\": \"...\", \"observacao\": \"opcional\"}, {\"tipo\": \"aprofundando\", \"titulo\": \"...\", \"texto\": \"...\"}, {\"tipo\": \"dialogo\", \"falas\": [{\"quem\": \"Aluno\", \"texto\": \"...\"}, {\"quem\": \"Professor\", \"texto\": \"...\"}]}, {\"tipo\": \"divergencia\", \"pergunta\": \"...\", \"posicoes\": [{\"rotulo\": \"Majoritária\", \"texto\": \"...\"}]}, {\"tipo\": \"revisao\", \"titulo\": \"O QUE ESTUDEI\", \"linhas\": [{\"tema\": \"...\", \"itens\": [\"...\"]}]}]}], \"questoes\": [{\"cabecalho\": \"01. (BANCA / Órgão / Ano) Enunciado.\", \"corpo\": [\"afirmativa ou alternativas\"], \"certo_errado\": true}], \"comentarios\": [{\"cabecalho\": \"01. (BANCA / Órgão / Ano)\", \"corpo\": [\"...\"], \"gabarito\": \"Errado\", \"comentario\": \"...\"}], \"gabarito\": [{\"n\": 1, \"g\": \"Errado\"}]}\\n\\nMARCAS INLINE (renderizadas pela máscara):\\n- **texto** = negrito (dourado no corpo).\\n- __texto__ = negrito sublinhado (máxima atenção).\\n- %%texto%% = negrito vermelho (alerta crítico, uso raro).\\nO material fonte já chega com __sublinhados__ e %%vermelhos%% marcados pelo professor original: PRESERVE essas ênfases nos trechos correspondentes da sua reescrita (aplicando a marca à frase reescrita equivalente). Além das herdadas, use __ em 1 a 3 expressões decisivas por capítulo e %% só em alerta que evita erro grave de prova.\\n\\nNOTAÇÃO DE LÓGICA (RLM): a disjunção exclusiva (ou...ou) é escrita SEMPRE como __∨__, inclusive dentro de tabelas, mnemônicos e exemplos (o renderizador aplica o sublinhado do símbolo, em peso normal). NUNCA use **∨** nem ∨ sem marca para representar a disjunção exclusiva. Os demais símbolos lógicos (∧, ∨ inclusivo, ¬, ~, →, ↔, ∀, ∃) vão SEM marcas. Esta regra de notação prevalece sobre a limpeza de marcas: __∨__ é notação matemática, não ênfase.\\n\\nREGRAS INVIOLÁVEIS:\\n1. BLOQUEIO ZERO: travessão (—) é PROIBIDO em qualquer texto de corpo, box, questão ou comentário. Substitua por dois pontos, vírgula ou ponto. Única exceção: o título de capítulo no formato exato \"CAPÍTULO N — NOME\" (padrão da máscara).\\n2. TOM: professor conversa com você. \"Você\" é o aluno, \"eu\" é o professor. Registro de especialista próximo, sem personagem fictício persistente. A teoria é uma REESCRITA COMPLETA e organizada da transcrição, não uma cópia: corrija oralidade, organize por conceito, preserve os exemplos e vivências do professor original.\\n3. APRESENTAÇÃO: exatamente 2 parágrafos, sem saudação (proibido \"Bem-vindo\", \"Olá\" e variações). Parágrafo 1: apresenta o tema e a fronteira ou confusão que a banca mais explora nele. Parágrafo 2: mapeia o material (\"Os Capítulos 1 e 2 cobrem...; os Capítulos 3 e 4 cobrem...\") e anuncia que cada capítulo fecha com quadro de revisão e que ao final há duas listas de questões, primeiro sem gabarito e depois integralmente comentadas.\\n4. ESTRUTURA E EXTENSÃO: 5 a 8 capítulos, SEMPRE. META NUMÉRICA: a parte teórica completa (apresentação + capítulos) deve ter entre 9.000 e 14.000 palavras; entregar menos de 8.000 palavras é descumprimento da tarefa. O COMPLEMENTO DE PESQUISA VERIFICADO existe para AMPLIAR a apostila: cubra a íntegra conceitual da transcrição E do complemento, criando capítulos e blocos adicionais para o conteúdo do complemento, incluindo TODOS os exemplos resolvidos, pegadinhas e erros comuns que ele traz (cada exemplo resolvido do complemento vira parágrafos próprios com a resolução completa; pegadinhas viram blocos dica ou aprofundando). No mínimo 1 bloco aprofundando por capítulo. É PROIBIDO resumir, comprimir ou omitir conteúdo da transcrição ou do complemento para abrir espaço. Desenvolva cada conceito por completo: explicação + exemplo + armadilha, sem economizar parágrafos. Com 2 ou mais partes no material, produza pelo menos 2 capítulos por parte. Sequência dentro de cada tema: explicação em português claro, exemplo prático, fundamento técnico (letra da lei ou jurisprudência APENAS quando a matéria tiver norma jurídica), armadilha da banca (box dica). Cada capítulo termina com um box revisao com titulo SEMPRE \"O QUE ESTUDEI\": 3 a 5 linhas, tema em CAIXA ALTA com no máximo 3 palavras, 2 a 3 itens curtos e diretos por tema, sem ponto final nos itens. Aberturas de capítulo variam de mecanismo (cenário curto, pergunta direta, contraintuitivo, erro comum). Emparelhe parágrafo longo com sentença curtíssima 2 a 3 vezes por capítulo. Capítulos consecutivos não podem ter estrutura idêntica.\\n5. ROTEAMENTO DE BLOCOS (obrigatório; \"dica\" não é bloco genérico para tudo):\\n- ATENÇÃO AO TIPO DE MATÉRIA: os blocos \"lei\" e \"jurisprudencia\" são EXCLUSIVOS de norma jurídica e decisão de tribunal. Em matéria SEM norma jurídica (português, redação, matemática, raciocínio lógico, informática, atualidades e afins) esses dois blocos são PROIBIDOS: regra gramatical, definição técnica ou citação de autor entra em parágrafo comum com **negrito**, em \"dica\" ou em \"aprofundando\". Use \"lei\" somente se o texto citado for de lei, decreto, Constituição, regimento ou norma equivalente, com a fonte normativa real no campo \"fonte\".\\n- Posições conflitantes (doutrina x tribunal, corrente majoritária x minoritária, gramáticos que divergem) SEMPRE viram bloco \"divergencia\", com um rótulo por posição e, dentro do texto de cada posição, como reconhecer no enunciado qual resposta a banca espera. Nunca comprima divergência em \"dica\".\\n- Comparação entre categorias, classificações paralelas ou critérios lado a lado viram bloco \"tabela\" com \"legenda\" curta. Apostila com conteúdo classificatório deve ter ao menos 1 tabela.\\n- Texto literal de dispositivo legal relevante para a prova vira bloco \"lei\" (fonte + texto transcrito), não paráfrase dentro de dica ou parágrafo.\\n- Súmula, súmula vinculante ou tese vira bloco \"jurisprudencia\" com o texto oficial e, quando houver consequência prática de prova, o campo \"observacao\".\\n- Nuance, limite conceitual ou fundamento que vai além do cobrado vira bloco \"aprofundando\" com título próprio.\\n- Dúvida natural que um aluno faria sobre o ponto pode virar bloco \"dialogo\" (no máximo 1 por apostila).\\n- \"dica\" fica reservado para armadilha de banca pontual e cirúrgica: no máximo 2 por capítulo.\\n- Meta de variedade: a apostila completa usa pelo menos 5 tipos diferentes de bloco além de paragrafo, subtitulo e revisao, sempre que o conteúdo comportar.\\n6. NEGRITO: use **texto** para termos-chave (com parcimônia, 2 a 5 por parágrafo denso). MNEMÔNICO: só quando houver 4+ itens, com título curto memorável e corpo que ensina a aplicar o teste.\\n7. IMAGENS: o texto pode conter marcadores [IMAGEM N] no ponto exato onde o professor inseriu uma imagem (mapa mental, esquema, foto). Insira no lugar correspondente do capítulo um bloco {\"tipo\": \"imagem\", \"ref\": N, \"legenda\": \"legenda curta descritiva\"}. Use cada ref no máximo uma vez, apenas refs que existem no texto, na posição equivalente ao marcador.\\n8. QUESTÕES: use EXCLUSIVAMENTE as questões reais do arquivo de questões, renumeradas de 01 em diante, mantendo banca, órgão, ano e texto originais (corrija só erros evidentes de OCR). O cabeçalho segue SEMPRE o formato \"01. (BANCA / Órgão / Ano)\" com espaços ao redor das barras. Enunciados e alternativas saem LIMPOS, sem marcas ** __ %% (remova as que vierem do arquivo; exceção: preserve __∨__ da disjunção exclusiva). Questões de Certo/Errado recebem \"certo_errado\": true. Questões de múltipla escolha listam as alternativas em \"corpo\" (uma por linha: \"A) ...\"). TODAS as questões entram também em \"comentarios\": o campo \"corpo\" dos comentarios é OBRIGATÓRIO e repete o enunciado e as alternativas completos (nunca vazio), seguido de gabarito e comentário técnico direto (2 a 5 frases: por que o gabarito está certo e onde mora o erro dos distratores), com **negrito** nos 2 a 4 termos decisivos e __sublinhado__ em 1 a 2 expressões-chave de cada comentário.\\n9. GABARITO: uma entrada por questão, na ordem. Para múltipla escolha use a letra (\"B\"), para Certo/Errado use \"Certo\" ou \"Errado\" (no campo gabarito dos comentários de múltipla escolha use \"Letra B\").\\n10. Proibido meta-comentário de dificuldade como transição e teaser de próxima aula no encerramento. Encerre no conteúdo.\\n11. Mencione FGV normalmente quando a banca for FGV (o renderizador aplica o destaque).\\n12. Saída: SOMENTE o JSON, primeira linha começa com { e última termina com }.';\nconst userMsg = 'Este material didático cobre TODAS as partes abaixo, na ordem numérica das partes. O título deve unificar os temas de todas as partes (exemplo: partes sobre poder disciplinar e poder hierárquico viram \"PODER DISCIPLINAR E PODER HIERÁRQUICO\"). Distribua os capítulos cobrindo cada parte na sequência.\\n\\nTRANSCRIÇÕES DAS AULAS + COMPLEMENTO DE PESQUISA (material bruto em partes ordenadas; a seção final, marcada como ===== COMPLEMENTO DE PESQUISA VERIFICADO =====, traz conteúdo adicional pesquisado na web e verificado. INTEGRE esse complemento aos capítulos no ponto temático correspondente, sem citar que veio de pesquisa. O complemento existe para AMPLIAR a apostila: crie capítulos e blocos ADICIONAIS para cobri-lo POR INTEIRO, incluindo todos os exemplos resolvidos, pegadinhas e erros comuns que ele traz; é PROIBIDO resumir ou cortar conteúdo da transcrição ou do complemento. META DE EXTENSÃO: a parte teórica (apresentação + capítulos) deve ter entre 9.000 e 14.000 palavras; menos de 8.000 palavras é descumprimento da tarefa):\\n<<<MATERIAL\\n' + (m.materialTexto || '') + '\\nMATERIAL>>>\\n\\nProduza agora o JSON da parte TEÓRICA da apostila conforme as instruções do sistema. Responda APENAS com o JSON, sem markdown, sem comentários.';\nconst body = {\n  model: $('Config').first().json.modelId,\n  max_tokens: 64000,\n  temperature: 0.4,\n  system: system,\n  messages: [{ role: 'user', content: userMsg }]\n};\nreturn [{ json: { prefixo: m.prefixo, bodyString: JSON.stringify(body) } }];"
+      },
+      "id": "81f1e478-7a3d-4429-af94-f230ea9a0ce9",
+      "name": "Montar chamada teoria",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3408,
+        -208
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.anthropic.com/v1/messages",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "anthropicApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "anthropic-version",
+              "value": "2023-06-01"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $json.bodyString }}",
+        "options": {
+          "timeout": 900000
+        }
+      },
+      "id": "e0e68de1-1df4-4282-bc4f-4846ecb50bd6",
+      "name": "Gerar conteúdo estruturado",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        3600,
+        -208
+      ],
+      "credentials": {
+        "anthropicApi": {
+          "id": "CREDENTIAL_ID",
+          "name": "Anthropic account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "resource": "folder",
+        "folderId": "={{ $('Config').first().json.folderId }}"
+      },
+      "id": "c8208e9b-4007-410e-93ab-93d6da09ce6f",
+      "name": "Listar itens da raiz",
+      "type": "n8n-nodes-base.microsoftOneDrive",
+      "typeVersion": 1.1,
+      "position": [
+        512,
+        176
+      ],
+      "credentials": {
+        "microsoftOneDriveOAuth2Api": {
+          "id": "CREDENTIAL_ID",
+          "name": "OneDrive account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "resource": "folder",
+        "folderId": "={{ $json.id || $('Config').first().json.folderId }}"
+      },
+      "id": "788fcb0c-f189-4d16-99cd-0e3e3ae008ef",
+      "name": "Listar arquivos das subpastas",
+      "type": "n8n-nodes-base.microsoftOneDrive",
+      "typeVersion": 1.1,
+      "position": [
+        816,
+        176
+      ],
+      "credentials": {
+        "microsoftOneDriveOAuth2Api": {
+          "id": "CREDENTIAL_ID",
+          "name": "OneDrive account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "download",
+        "fileId": "={{ $json.fileId }}"
+      },
+      "id": "fa459be4-ec12-444e-88b1-6d56f23a4dd7",
+      "name": "Baixar arquivo",
+      "type": "n8n-nodes-base.microsoftOneDrive",
+      "typeVersion": 1.1,
+      "position": [
+        1984,
+        192
+      ],
+      "credentials": {
+        "microsoftOneDriveOAuth2Api": {
+          "id": "CREDENTIAL_ID",
+          "name": "OneDrive account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "fileName": "={{ $('Montar payload do renderizador').item.json.filename }}",
+        "parentId": "={{ $('Processar um par').first().json.pastaDestino || $('Config').first().json.folderId }}",
+        "binaryData": true
+      },
+      "id": "65b15e6b-bbad-4b00-aabe-25d22946e6d7",
+      "name": "Salvar material pronto no Drive",
+      "type": "n8n-nodes-base.microsoftOneDrive",
+      "typeVersion": 1.1,
+      "position": [
+        4768,
+        192
+      ],
+      "credentials": {
+        "microsoftOneDriveOAuth2Api": {
+          "id": "CREDENTIAL_ID",
+          "name": "OneDrive account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "download",
+        "fileId": "={{ $('Salvar material pronto no Drive').item.json.id }}"
+      },
+      "id": "0adc49e2-9093-4a1a-8cf9-49a284898316",
+      "name": "Baixar docx gerado",
+      "type": "n8n-nodes-base.microsoftOneDrive",
+      "typeVersion": 1.1,
+      "position": [
+        4960,
+        192
+      ],
+      "credentials": {
+        "microsoftOneDriveOAuth2Api": {
+          "id": "CREDENTIAL_ID",
+          "name": "OneDrive account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "fileName": "={{ $('Montar payload do renderizador').item.json.filename.replace(/\\.docx$/i, '.pdf') }}",
+        "parentId": "={{ $('Processar um par').first().json.pastaDestino || $('Config').first().json.folderId }}",
+        "binaryData": true
+      },
+      "id": "b5bbacf1-6b53-44fa-b5c4-7b5b5ba51128",
+      "name": "Salvar PDF no Drive",
+      "type": "n8n-nodes-base.microsoftOneDrive",
+      "typeVersion": 1.1,
+      "position": [
+        5664,
+        192
+      ],
+      "credentials": {
+        "microsoftOneDriveOAuth2Api": {
+          "id": "CREDENTIAL_ID",
+          "name": "OneDrive account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "resource": "folder",
+        "operation": "rename",
+        "itemId": "={{ $('Processar um par').first().json.pastaDestino }}",
+        "newName": "=OK {{ $('Processar um par').first().json.nomePasta }}"
+      },
+      "id": "f4fafcfb-50be-411a-93b1-7ee253546044",
+      "name": "Marcar pasta como OK",
+      "type": "n8n-nodes-base.microsoftOneDrive",
+      "typeVersion": 1.1,
+      "position": [
+        6032,
+        208
+      ],
+      "credentials": {
+        "microsoftOneDriveOAuth2Api": {
+          "id": "CREDENTIAL_ID",
+          "name": "OneDrive account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// vários arquivos novos no mesmo minuto = vários itens do trigger;\n// o pipeline só precisa de UM disparo, ele mesmo lista tudo\nreturn [{ json: { disparo: true } }];"
+      },
+      "id": "3df9587f-508e-4422-806a-199a41be597b",
+      "name": "Disparo único",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        192,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "resource": "folder",
+        "operation": "rename",
+        "itemId": "={{ $('Processar um par').first().json.pastaDestino }}",
+        "newName": "=EXE {{ $('Processar um par').first().json.nomePasta }}"
+      },
+      "id": "290dbed4-d210-4925-9e54-fb3a7208d74c",
+      "name": "Travar pasta (EXE)",
+      "type": "n8n-nodes-base.microsoftOneDrive",
+      "typeVersion": 1.1,
+      "position": [
+        2464,
+        -208
+      ],
+      "credentials": {
+        "microsoftOneDriveOAuth2Api": {
+          "id": "CREDENTIAL_ID",
+          "name": "OneDrive account"
+        }
+      }
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        -64,
+        0
+      ],
+      "id": "c506dba7-b694-4c2f-9cae-f450d9a6cf53",
+      "name": "When clicking ‘Execute workflow’"
+    }
+  ],
+  "connections": {
+    "Extrair texto": {
+      "main": [
+        [
+          {
+            "node": "Juntar textos",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Montar pesquisa Gemini": {
+      "main": [
+        [
+          {
+            "node": "Pesquisar com Gemini",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Pesquisar com Gemini": {
+      "main": [
+        [
+          {
+            "node": "Montar verificação Gemini",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Montar verificação Gemini": {
+      "main": [
+        [
+          {
+            "node": "Verificar com Gemini",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Verificar com Gemini": {
+      "main": [
+        [
+          {
+            "node": "Engordar material",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gerar questões e comentários": {
+      "main": [
+        [
+          {
+            "node": "Montar payload do renderizador",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Montar payload do renderizador": {
+      "main": [
+        [
+          {
+            "node": "Renderizar docx",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Processar um par": {
+      "main": [
+        [
+          {
+            "node": "Fim do ciclo",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Explodir arquivos do grupo",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Engordar material": {
+      "main": [
+        [
+          {
+            "node": "Montar chamada teoria",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Montar chamada teoria": {
+      "main": [
+        [
+          {
+            "node": "Gerar conteúdo estruturado",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gerar conteúdo estruturado": {
+      "main": [
+        [
+          {
+            "node": "Gerar questões e comentários",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parear material e questões": {
+      "main": [
+        [
+          {
+            "node": "Processar um par",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Config": {
+      "main": [
+        [
+          {
+            "node": "Listar itens da raiz",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Listar itens da raiz": {
+      "main": [
+        [
+          {
+            "node": "Filtrar subpastas",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filtrar subpastas": {
+      "main": [
+        [
+          {
+            "node": "Listar arquivos das subpastas",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Listar arquivos das subpastas": {
+      "main": [
+        [
+          {
+            "node": "Parear material e questões",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Explodir arquivos do grupo": {
+      "main": [
+        [
+          {
+            "node": "Baixar arquivo",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Baixar arquivo": {
+      "main": [
+        [
+          {
+            "node": "Extrair texto",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Renderizar docx": {
+      "main": [
+        [
+          {
+            "node": "Salvar material pronto no Drive",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Salvar material pronto no Drive": {
+      "main": [
+        [
+          {
+            "node": "Baixar docx gerado",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Baixar docx gerado": {
+      "main": [
+        [
+          {
+            "node": "Converter em PDF",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Converter em PDF": {
+      "main": [
+        [
+          {
+            "node": "Salvar PDF no Drive",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Salvar PDF no Drive": {
+      "main": [
+        [
+          {
+            "node": "Marcar pasta como OK",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Marcar pasta como OK": {
+      "main": [
+        [
+          {
+            "node": "Processar um par",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Disparo único": {
+      "main": [
+        [
+          {
+            "node": "Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Juntar textos": {
+      "main": [
+        [
+          {
+            "node": "Travar pasta (EXE)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Travar pasta (EXE)": {
+      "main": [
+        [
+          {
+            "node": "Montar pesquisa Gemini",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "When clicking ‘Execute workflow’": {
+      "main": [
+        [
+          {
+            "node": "Disparo único",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "meta": {
+    "sanitized": true,
+    "note": "Credenciais, IDs de conta e hosts internos trocados por placeholders."
+  }
+}
