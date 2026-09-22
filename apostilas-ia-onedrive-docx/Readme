@@ -1,0 +1,53 @@
+# Apostilas automáticas com IA: OneDrive → Gemini → Claude → DOCX/PDF
+
+Workflow n8n de **29 nós** que transforma o material bruto de um professor (transcrições de aula e listas de questões em `.docx`, deixados numa pasta do OneDrive) em uma apostila completa, diagramada na identidade visual do cliente e entregue em DOCX e PDF na mesma pasta. Sem intervenção humana entre o upload e a entrega.
+
+Esta é a versão "Deep" do pipeline: além de estruturar o que o professor mandou, ela **pesquisa e verifica um complemento teórico com Gemini + Google Search** antes de escrever, produzindo apostilas de 5 a 8 capítulos e 9 a 14 mil palavras. A versão de produção mais recente (2.2) roda em outra instância; esta é a base a partir da qual ela evoluiu.
+
+## Fluxo
+
+```
+Trigger (manual ou arquivo novo) ──► Disparo único ──► Listar raiz do OneDrive
+   ──► Filtrar subpastas (ignora "OK " e "EXE ") ──► Listar arquivos ──► Parear material × questões
+   ──► Processar um par (loop) ──► Travar pasta (renomeia para "EXE ...")
+        ──► Baixar arquivos ──► /extract (renderdocxs) ──► Juntar textos
+        ──► Gemini: pesquisa do complemento ──► Gemini: verificação com Google Search
+        ──► Engordar material (original + complemento verificado)
+        ──► Claude: teoria estruturada em JSON  ┐
+        ──► Claude: questões, comentários e gabarito ┘──► Montar payload
+        ──► /render (renderdocxs) ──► salvar DOCX ──► Stirling PDF ──► salvar PDF
+        ──► Marcar pasta como "OK ..." ──► próximo par
+```
+
+## O que cada etapa faz
+
+- **Descoberta e pareamento.** Lista a raiz, ignora pastas já entregues (`OK`) ou em processamento (`EXE`), ordena pela data de criação e, dentro de cada pasta, separa arquivos de **material** e de **questões** pelo nome (`QUEST` sem `TEORIA`), respeitando a numeração `1.2.3` dos arquivos para montar as partes na ordem certa.
+- **Trava de concorrência.** Antes de processar, renomeia a pasta para `EXE <nome>`. Se dois gatilhos dispararem no mesmo minuto (vários arquivos subindo juntos), o nó `Disparo único` colapsa tudo em uma execução, e a trava impede que outra execução pegue a mesma pasta. No fim vira `OK <nome>`.
+- **Extração.** Cada `.docx` passa pelo `/extract` do [renderdocxs](https://github.com/willianbrognoli/renderdocxs), que devolve texto com as marcas do professor (sublinhado, vermelho, imagens, equações).
+- **Pesquisa e verificação (Gemini).** Primeiro prompt gera um complemento didático sobre o tema identificado pelo nome da pasta, dos arquivos e do conteúdo. Segundo prompt atua como revisor técnico: **toda afirmação verificável (lei, artigo, súmula, prazo, percentual) precisa ser confirmada por busca no Google** antes de ficar; erros são corrigidos no lugar, e em conflito com o material original prevalece a fonte oficial. Se a verificação voltar vazia, cai no complemento bruto.
+- **Escrita (Claude).** O material "engordado" vai para o Claude com um schema JSON rígido (capítulos, blocos de parágrafo, subtítulo, tabela, imagem, mnemônico, dica, lei, jurisprudência, diálogo, divergência). Um segundo modelo, mais barato, cuida das questões: garimpa questões de banca embutidas na teoria, junta com o arquivo de questões, renumera e gera comentários e gabarito.
+- **Renderização e entrega.** `Montar payload` valida e normaliza o JSON dos dois modelos (parser tolerante, limpeza de Certo/Errado, corte do cabeçalho da questão), chama `/render`, salva o DOCX no OneDrive, converte em PDF no Stirling e salva o PDF.
+
+## Decisões de projeto
+
+- **Estado no próprio OneDrive** (prefixos `OK`/`EXE` no nome da pasta): sem banco, o professor vê o status na pasta dele, e reprocessar é só tirar o prefixo.
+- **Dois modelos, dois custos**: modelo maior para a teoria (onde a qualidade da escrita importa), modelo menor para questões (tarefa de transcrição e classificação). Tudo configurado no nó `Config` (`modelId`, `modelQuestoes`, `geminiModelPesquisa`, `geminiModelVerificacao`).
+- **Verificação separada da geração**: pedir ao mesmo prompt que "escreva e confira" não funciona; o segundo passo com ferramenta de busca e protocolo explícito reduziu erros de lei e jurisprudência.
+- **Renderização fora do n8n**: o n8n orquestra; a diagramação fiel ao template vive num microserviço próprio, testável e versionado.
+- **Loop por par com `splitInBatches`**: uma pasta que falha não derruba as outras; a trava `EXE` fica como marca do que precisa de atenção.
+
+## Stack
+
+n8n · Microsoft OneDrive (Graph API) · Google Gemini API (com Google Search grounding) · Anthropic API (Claude) · renderdocxs (FastAPI + LibreOffice) · Stirling PDF · Docker/Easypanel
+
+## Como usar
+
+1. Importe `workflow.json`.
+2. Credenciais: OneDrive (OAuth2), Gemini (header `x-goog-api-key`), Anthropic.
+3. No nó **Config**: `rendererUrl` (URL interna do renderdocxs), `folderId` (pasta raiz do OneDrive), modelos.
+4. Suba o `renderdocxs` e o Stirling PDF na mesma rede do n8n (`http://<projeto>_renderdocx:8000`, `http://<projeto>_stirlingpdf:8080`).
+5. Estrutura esperada no OneDrive: `raiz/<Aula>/1.1 teoria.docx`, `1.2 QUESTOES.docx`… Uma subpasta = uma apostila.
+
+## Placeholders
+
+`ID_DA_PASTA_ONEDRIVE`, `CREDENTIAL_ID`. Hosts do renderizador e do Stirling são internos do Docker e ficaram como estão.
