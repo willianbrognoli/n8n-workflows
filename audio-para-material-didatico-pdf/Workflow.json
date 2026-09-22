@@ -1,0 +1,488 @@
+{
+  "name": "Academia de Polícia - Áudio → Material Didático (PDF)",
+  "nodes": [
+    {
+      "parameters": {
+        "pollTimes": {
+          "item": [
+            {
+              "mode": "everyX",
+              "value": 2,
+              "unit": "minutes"
+            }
+          ]
+        },
+        "triggerOn": "specificFolder",
+        "folderToWatch": {
+          "__rl": true,
+          "mode": "id",
+          "value": "ID_DA_PASTA_DRIVE"
+        },
+        "event": "fileCreated",
+        "options": {}
+      },
+      "name": "Novo Áudio no Drive",
+      "type": "n8n-nodes-base.googleDriveTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        300
+      ],
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "CREDENTIAL_ID",
+          "name": "Google Drive account"
+        }
+      },
+      "id": "4bed01f8-d605-4e29-8833-d1245a94536c"
+    },
+    {
+      "parameters": {
+        "mode": "raw",
+        "jsonOutput": "{\"FOLDER_ID\": \"ID_DA_PASTA_DRIVE\", \"PDF_URL\": \"https://SEU-SCREENSHOT-SERVICE/html-to-pdf\", \"LOGO_URL\": \"https://academiadepolicia.com.br/wp-content/uploads/2026/04/brasao-academia-de-policia-em-fundo.png\", \"SITE_URL\": \"academiadepolicia.com.br\", \"WHATSAPP_FMT\": \"(DD) 9XXXX-XXXX\", \"MAX_MB\": 25, \"SYSTEM_PROMPT_B64\": \"Vm9jw6ogw6kgbyBjb29yZGVuYWRvciBwZWRhZ8OzZ2ljbyBkYSBBY2FkZW1pYSBkZSBQb2zDrWNpYSwgZXNjb2xhIGZvY2FkYSBleGNsdXNpdmFtZW50ZSBlbSBjb25jdXJzb3MgZGUgR3VhcmRhIE11bmljaXBhbCAoR0NNKS4gVm9jw6ogcmVjZWJlIGEgVFJBTlNDUknDh8ODTyBBVVRPTcOBVElDQSBkZSB1bSDDoXVkaW8gZ3JhdmFkbyBwb3IgdW0gcHJvZmVzc29yIGUgdHJhbnNmb3JtYSBlc3NlIGNvbnRlw7pkbyBlbSB1bSBNQVRFUklBTCBESUTDgVRJQ08gY29tcGxldG8sIG9yZ2FuaXphZG8gZSBwcm9udG8gcGFyYSBvIGFsdW5vIGVzdHVkYXIuCgpSRUdSQVMgREUgRklERUxJREFERSAob2JyaWdhdMOzcmlhcykKMS4gTyBjb250ZcO6ZG8gdmVtIGRvIMOhdWRpby4gUmVvcmdhbml6ZSwgZXhwbGlxdWUgbWVsaG9yIGUgZMOqIGVzdHJ1dHVyYSwgbWFzIE7Dg08gYWNyZXNjZW50ZSB0ZXNlLCBuw7ptZXJvIGRlIGxlaSwgYXJ0aWdvLCBkYXRhLCBwcmF6bywgZXN0YXTDrXN0aWNhIG91IGp1cmlzcHJ1ZMOqbmNpYSBxdWUgbyBwcm9mZXNzb3IgbsOjbyB0ZW5oYSBkaXRvLgoyLiBDb3JyaWphIGVycm9zIMOzYnZpb3MgZGEgdHJhbnNjcmnDp8OjbyBhdXRvbcOhdGljYSAoZXguOiAibGVpIHRyZXplIHplcm8gdmludGUgZSBkb2lzIiDihpIgIkxlaSAxMy4wMjIvMjAxNCI7IG5vbWVzIGRlIGluc3RpdHV0b3MgbWFsIHRyYW5zY3JpdG9zKS4gU2UgbsOjbyB0aXZlciBjZXJ0ZXphIGRhIGNvcnJlw6fDo28sIG1hbnRlbmhhIGdlbsOpcmljby4KMy4gUmVtb3ZhIHbDrWNpb3MgZGUgZmFsYSAoIm7DqSIsICJ0aXBvIGFzc2ltIiwgcmVwZXRpw6fDtWVzLCBjb252ZXJzYSBwYXJhbGVsYSwgYXZpc29zIGRlIGdyYXZhw6fDo28pLgo0LiBCbG9jbyAibGVpIiBzw7MgcXVhbmRvIG8gcHJvZmVzc29yIExFUiBvdSBDSVRBUiBvIHRleHRvIGRvIGRpc3Bvc2l0aXZvLiBTZSBlbGUgYXBlbmFzIGV4cGxpY291IG8gYXJ0aWdvLCB1c2UgImRlc3RhcXVlIiBvdSAicGFyYWdyYWZvIiBjb20gYXMgcGFsYXZyYXMgZGVsZSwgc2VtIGFzcGFzIGRlIHRleHRvIGxlZ2FsLgo1LiAicHJvZmVzc29yIjogcHJlZW5jaGEgc8OzIHNlIG8gbm9tZSBmb3IgZGl0byBubyDDoXVkaW8uIENhc28gY29udHLDoXJpbywgZGVpeGUgIiIuCjYuIFBvcnR1Z3XDqnMgY29ycmV0bywgZnJhc2VzIGNsYXJhcywgdG9tIGRlIHByb2Zlc3NvciBleHBlcmllbnRlIGZhbGFuZG8gY29tIG8gYWx1bm8uIFNlbSBqYXJnw6NvIHTDoXRpY28gZGUgZW5mZWl0ZS4KCkRJRMOBVElDQQotIERpdmlkYSBlbSAzIGEgOCBzZcOnw7VlcywgbmEgb3JkZW0gbMOzZ2ljYSBkZSBhcHJlbmRpemFkbyAoZG8gY29uY2VpdG8gw6AgYXBsaWNhw6fDo28pLCBtZXNtbyBxdWUgbyBwcm9mZXNzb3IgdGVuaGEgZmFsYWRvIGZvcmEgZGUgb3JkZW0uCi0gRW0gY2FkYSBzZcOnw6NvLCBhbHRlcm5lIHRpcG9zIGRlIGJsb2NvOiBleHBsaXF1ZSAocGFyYWdyYWZvKSwgc2ludGV0aXplIChkZXN0YXF1ZS9saXN0YS90YWJlbGEpLCBtb3N0cmUgbmEgcHLDoXRpY2EgKGV4ZW1wbG8pIGUgYWxlcnRlIChhdGVuY2FvKSBxdWFuZG8gbyBwcm9mZXNzb3IgYXBvbnRhciBwZWdhZGluaGEgb3UgZXJybyBjb211bS4KLSBVc2UgInBhc3NvcyIgcGFyYSBwcm9jZWRpbWVudG9zIGUgc2VxdcOqbmNpYXM7ICJ0YWJlbGEiIHBhcmEgY29tcGFyYcOnw7VlcyAobcOheGltbyA0IGNvbHVuYXMpLgotICJkaWNhIiBwYXJhIG1hY2V0ZXMsIG1uZW3DtG5pY29zIGUgY29uc2VsaG9zIGRlIGVzdHVkbyBxdWUgbyBwcm9mZXNzb3IgZGVyLgotIE1hcnF1ZSB0ZXJtb3MtY2hhdmUgY29tICoqbmVncml0byoqIChzZW0gZXhhZ2VybzogMSBhIDMgcG9yIHBhcsOhZ3JhZm8pLgotIHJldmlzYW86IDUgYSAxMCBmcmFzZXMgY3VydGFzIGNvbSBvIGVzc2VuY2lhbCBwYXJhIHJldmlzYXIgbmEgdsOpc3BlcmEuCi0gZ2xvc3NhcmlvOiAzIGEgMTAgdGVybW9zIHTDqWNuaWNvcyBxdWUgYXBhcmVjZXJhbSwgY29tIGRlZmluacOnw6NvIGN1cnRhLgotIHF1ZXN0b2VzOiA1IGEgMTAgcXVlc3TDtWVzIElOw4lESVRBUyBiYXNlYWRhcyBleGNsdXNpdmFtZW50ZSBubyBjb250ZcO6ZG8gZG8gw6F1ZGlvLCBubyBlc3RpbG8gZGFzIGJhbmNhcyBkZSBHQ00uIE1pc3R1cmUgbcO6bHRpcGxhIGVzY29saGEgKDQgb3UgNSBhbHRlcm5hdGl2YXMsIHNlbSBsZXRyYXMgbm8gdGV4dG8pIGUgQ2VydG8vRXJyYWRvIChhbHRlcm5hdGl2YXMgdmF6aWFzIFtdKS4gRW0gImJhbmNhIiBlc2NyZXZhICJRdWVzdMOjbyBpbsOpZGl0YSIuIGdhYmFyaXRvOiBsZXRyYSAoQeKAk0UpIG91ICJDZXJ0byIvIkVycmFkbyIuIGNvbWVudGFyaW86IDIgYSA0IGZyYXNlcyBleHBsaWNhbmRvIHBvciBxdWUgYSByZXNwb3N0YSBlc3TDoSBjZXJ0YSBlIGFzIG91dHJhcyBlcnJhZGFzLgotIGR1cmFjYW9fbGVpdHVyYTogZXN0aW1hdGl2YSByZWFsaXN0YSAoZXguOiAiMjAgbWluIikuCgpGT1JNQVRPIERFIFNBw41EQQpSZXNwb25kYSBBUEVOQVMgY29tIHVtIEpTT04gdsOhbGlkbywgc2VtIG1hcmtkb3duLCBzZW0gdGV4dG8gYW50ZXMgb3UgZGVwb2lzLCBuZXN0ZSBmb3JtYXRvOgp7CiAgInRpdHVsbyI6ICJ0w610dWxvIGN1cnRvIGUgY2xhcm8gZG8gdGVtYSAobcOheC4gNzAgY2FyYWN0ZXJlcykiLAogICJzdWJ0aXR1bG8iOiAiMSBmcmFzZSBkaXplbmRvIG8gcmVjb3J0ZSBkYSBhdWxhIiwKICAiZGlzY2lwbGluYSI6ICJleC46IExlZ2lzbGHDp8OjbyBHQ00sIERpcmVpdG8gUGVuYWwsIFBvcnR1Z3XDqnMsIFByZXBhcmHDp8OjbyIsCiAgInByb2Zlc3NvciI6ICIiLAogICJkdXJhY2FvX2xlaXR1cmEiOiAiIiwKICAiYXByZXNlbnRhY2FvIjogIjIgYSAzIGZyYXNlcyBzb2JyZSBvIHF1ZSBvIGFsdW5vIHZhaSBlc3R1ZGFyIGUgcG9yIHF1ZSBpc3NvIGNhaSBuYSBwcm92YSIsCiAgIm9iamV0aXZvcyI6IFsiMyBhIDUgb2JqZXRpdm9zIGNvbWXDp2FuZG8gY29tIHZlcmJvIl0sCiAgInNlY29lcyI6IFsKICAgIHsidGl0dWxvIjogIi4uLiIsICJibG9jb3MiOiBbCiAgICAgIHsidGlwbyI6ICJwYXJhZ3JhZm8iLCAidGV4dG8iOiAiLi4uIn0sCiAgICAgIHsidGlwbyI6ICJkZXN0YXF1ZSIsICJ0aXR1bG8iOiAiQ29uY2VpdG8tY2hhdmUiLCAidGV4dG8iOiAiLi4uIn0sCiAgICAgIHsidGlwbyI6ICJsaXN0YSIsICJpdGVucyI6IFsiLi4uIiwgIi4uLiJdfSwKICAgICAgeyJ0aXBvIjogImxlaSIsICJmb250ZSI6ICJMZWkgWCwgYXJ0LiBZIiwgInRleHRvIjogIi4uLiJ9LAogICAgICB7InRpcG8iOiAiZGljYSIsICJ0ZXh0byI6ICIuLi4ifSwKICAgICAgeyJ0aXBvIjogImF0ZW5jYW8iLCAidGV4dG8iOiAiLi4uIn0sCiAgICAgIHsidGlwbyI6ICJleGVtcGxvIiwgInRpdHVsbyI6ICJOYSBwcsOhdGljYSIsICJ0ZXh0byI6ICIuLi4ifSwKICAgICAgeyJ0aXBvIjogInBhc3NvcyIsICJpdGVucyI6IFt7InRpdHVsbyI6ICIuLi4iLCAidGV4dG8iOiAiLi4uIn1dfSwKICAgICAgeyJ0aXBvIjogInRhYmVsYSIsICJjb2x1bmFzIjogWyIuLi4iLCAiLi4uIl0sICJsaW5oYXMiOiBbWyIuLi4iLCAiLi4uIl1dLCAibGVnZW5kYSI6ICIifQogICAgXX0KICBdLAogICJyZXZpc2FvIjogWyIuLi4iXSwKICAiZ2xvc3NhcmlvIjogW3sidGVybW8iOiAiLi4uIiwgImRlZmluaWNhbyI6ICIuLi4ifV0sCiAgInF1ZXN0b2VzIjogW3siYmFuY2EiOiAiUXVlc3TDo28gaW7DqWRpdGEiLCAiZW51bmNpYWRvIjogIi4uLiIsICJhbHRlcm5hdGl2YXMiOiBbIi4uLiIsICIuLi4iXSwgImdhYmFyaXRvIjogIkEiLCAiY29tZW50YXJpbyI6ICIuLi4ifV0KfQo=\"}",
+        "includeOtherFields": true,
+        "options": {}
+      },
+      "name": "Config",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        220,
+        300
+      ],
+      "id": "40dc85e5-d268-4a50-998a-bb4928ed2d62"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Mantém só arquivos de áudio novos e valida o tamanho (limite do Whisper: 25 MB)\nconst cfg = $('Config').first().json;\nconst out = [];\n$input.all().forEach((it, i) => {\n  const f = it.json;\n  const nome = String(f.name || '');\n  const mime = String(f.mimeType || '');\n  const ehAudio = mime.startsWith('audio/') || /\\.(mp3|m4a|wav|ogg|oga|opus|webm|mp4|mpeg|mpga|flac)$/i.test(nome);\n  if (!ehAudio) return;\n  const tamanho = Number(f.size || 0);\n  if (tamanho && tamanho > cfg.MAX_MB * 1024 * 1024) {\n    throw new Error(`O áudio \"${nome}\" tem ${(tamanho / 1048576).toFixed(1)} MB. O Whisper aceita até ${cfg.MAX_MB} MB: salve em MP3 mono de 48 kbps (≈ 70 min) ou divida em partes.`);\n  }\n  out.push({\n    json: {\n      fileId: f.id,\n      nome,\n      base: nome.replace(/\\.[^.]+$/, ''),\n      pasta: (Array.isArray(f.parents) && f.parents[0]) || cfg.FOLDER_ID\n    },\n    pairedItem: i\n  });\n});\nreturn out;\n"
+      },
+      "name": "Filtrar Áudio",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        440,
+        300
+      ],
+      "id": "319802af-4513-4309-a19f-a8afac8ceb15"
+    },
+    {
+      "parameters": {
+        "operation": "download",
+        "fileId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "={{ $json.fileId }}"
+        },
+        "options": {
+          "binaryPropertyName": "data"
+        }
+      },
+      "name": "Baixar Áudio",
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        660,
+        300
+      ],
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "CREDENTIAL_ID",
+          "name": "Google Drive account"
+        }
+      },
+      "id": "9e2b438b-8c3a-4a40-bbf0-71eba007ef50"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Ajusta o nome/extensão para formatos aceitos pelo Whisper (.opus/.oga → .ogg)\nconst item = $input.item;\nconst bin = item.binary && item.binary.data;\nif (!bin) throw new Error('Download do áudio veio vazio.');\nif (/\\.(opus|oga)$/i.test(bin.fileName || '')) {\n  bin.fileName = bin.fileName.replace(/\\.(opus|oga)$/i, '.ogg');\n  bin.mimeType = 'audio/ogg';\n}\nif (!/\\.[a-z0-9]{2,4}$/i.test(bin.fileName || '')) {\n  bin.fileName = (bin.fileName || 'audio') + '.mp3';\n}\nreturn item;\n",
+        "mode": "runOnceForEachItem"
+      },
+      "name": "Preparar Áudio",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        880,
+        300
+      ],
+      "id": "72895069-9899-4891-a340-726f832e52e1"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.openai.com/v1/audio/transcriptions",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBearerAuth",
+        "sendBody": true,
+        "contentType": "multipart-form-data",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "parameterType": "formBinaryData",
+              "name": "file",
+              "inputDataFieldName": "data"
+            },
+            {
+              "name": "model",
+              "value": "whisper-1"
+            },
+            {
+              "name": "language",
+              "value": "pt"
+            },
+            {
+              "name": "response_format",
+              "value": "text"
+            }
+          ]
+        },
+        "options": {
+          "batching": {
+            "batch": {
+              "batchSize": 1,
+              "batchInterval": 1000
+            }
+          },
+          "response": {
+            "response": {
+              "responseFormat": "text",
+              "outputPropertyName": "data"
+            }
+          },
+          "timeout": 900000
+        }
+      },
+      "name": "Transcrever (Whisper)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1100,
+        300
+      ],
+      "credentials": {
+        "httpBearerAuth": {
+          "id": "CREDENTIAL_ID",
+          "name": "OpenAI API"
+        }
+      },
+      "id": "b9ae60dc-b779-4961-828b-c473142efb30"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Monta a chamada do Claude que transforma a transcrição em material didático\nconst a = $('Filtrar Áudio').item.json;\nconst t = String($input.item.json.data || $input.item.json.text || '').trim();\nif (t.length < 300) {\n  throw new Error(`Transcrição de \"${a.nome}\" muito curta (${t.length} caracteres). Confira se o áudio tem fala.`);\n}\nconst system = Buffer.from($('Config').first().json.SYSTEM_PROMPT_B64, 'base64').toString('utf-8');\nreturn {\n  json: {\n    ...a,\n    transcricao: t,\n    requestBody: {\n      model: 'claude-sonnet-4-5-20250929',\n      max_tokens: 16000,\n      temperature: 0.3,\n      system,\n      messages: [{\n        role: 'user',\n        content: `Arquivo de áudio: ${a.nome}\\n\\n=== TRANSCRIÇÃO DO ÁUDIO ===\\n${t}\\n=== FIM DA TRANSCRIÇÃO ===\\n\\nGere o JSON do material didático.`\n      }]\n    }\n  }\n};\n",
+        "mode": "runOnceForEachItem"
+      },
+      "name": "Montar Chamada IA",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1320,
+        300
+      ],
+      "id": "8aef7594-1b6f-44bf-b00b-a6390bde8fd2"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.anthropic.com/v1/messages",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "anthropic-version",
+              "value": "2023-06-01"
+            },
+            {
+              "name": "content-type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.requestBody) }}",
+        "options": {
+          "batching": {
+            "batch": {
+              "batchSize": 1,
+              "batchInterval": 2000
+            }
+          },
+          "timeout": 900000
+        }
+      },
+      "name": "IA Monta Material (Claude)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1540,
+        300
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "CREDENTIAL_ID",
+          "name": "adp anthropic"
+        }
+      },
+      "id": "f1d5061e-5a94-4d87-aedb-15eb0ce67cc3"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Lê o JSON do Claude e monta o HTML A4 do material\nconst resp = $input.item.json;\nconst prev = $('Montar Chamada IA').item.json;\nconst cfg = $('Config').first().json;\n\nlet texto = '';\nif (Array.isArray(resp.content)) texto = resp.content.filter(b => b.type === 'text').map(b => b.text).join('');\ntexto = texto.replace(/```json\\s*/gi, '').replace(/```/g, '').trim();\nif (resp.stop_reason === 'max_tokens') throw new Error('A resposta da IA foi cortada (limite de tokens). Áudio muito longo: divida em partes.');\n\nlet m;\ntry { m = JSON.parse(texto); }\ncatch (e) {\n  const ini = texto.indexOf('{'), fim = texto.lastIndexOf('}');\n  if (ini === -1 || fim <= ini) throw new Error('IA não devolveu JSON: ' + texto.substring(0, 300));\n  m = JSON.parse(texto.substring(ini, fim + 1));\n}\nif (!m.titulo || !Array.isArray(m.secoes) || !m.secoes.length) throw new Error('JSON do material sem título ou sem seções.');\n\n// ═══ MATERIAL DIDÁTICO — ACADEMIA DE POLÍCIA ═══\n// Recebe o JSON do material (m) + cfg e devolve o HTML A4 pronto para /html-to-pdf.\nfunction montarHTML(m, cfg) {\n  const esc = (s) => String(s == null ? '' : s)\n    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\"/g, '&quot;');\n  // **negrito** e *itálico* depois de escapar\n  const fmt = (s) => esc(s)\n    .replace(/\\*\\*(.+?)\\*\\*/g, '<b>$1</b>')\n    .replace(/(^|[^*])\\*(?!\\s)(.+?)\\*(?!\\*)/g, '$1<i>$2</i>')\n    .replace(/\\n{2,}/g, '</p><p>').replace(/\\n/g, '<br>');\n  const arr = (x) => Array.isArray(x) ? x : [];\n\n  const bloco = (b) => {\n    switch (b.tipo) {\n      case 'paragrafo':\n        return `<p>${fmt(b.texto)}</p>`;\n      case 'lista':\n        return `<ul class=\"lista\">${arr(b.itens).map(i => `<li>${fmt(i)}</li>`).join('')}</ul>`;\n      case 'destaque':\n        return `<div class=\"box box--chave\"><div class=\"box__rot\">${esc(b.titulo || 'Conceito-chave')}</div><p>${fmt(b.texto)}</p></div>`;\n      case 'lei':\n        return `<div class=\"box box--lei\"><div class=\"box__rot\">Texto da lei</div><p>“${fmt(b.texto)}”</p>${b.fonte ? `<cite>${esc(b.fonte)}</cite>` : ''}</div>`;\n      case 'dica':\n        return `<div class=\"box box--dica\"><div class=\"box__rot\">${esc(b.titulo || 'Dica do professor')}</div><p>${fmt(b.texto)}</p></div>`;\n      case 'atencao':\n        return `<div class=\"box box--atencao\"><div class=\"box__rot\">${esc(b.titulo || 'Atenção: pegadinha de prova')}</div><p>${fmt(b.texto)}</p></div>`;\n      case 'exemplo':\n        return `<div class=\"box box--exemplo\"><div class=\"box__rot\">${esc(b.titulo || 'Exemplo prático')}</div><p>${fmt(b.texto)}</p></div>`;\n      case 'passos':\n        return `<ol class=\"passos\">${arr(b.itens).map((p, i) =>\n          `<li><span class=\"passos__n\">${i + 1}</span><div><b>${esc(p.titulo)}</b>${p.texto ? `<span>${fmt(p.texto)}</span>` : ''}</div></li>`).join('')}</ol>`;\n      case 'tabela':\n        return `<table class=\"tab\"><thead><tr>${arr(b.colunas).map(c => `<th>${esc(c)}</th>`).join('')}</tr></thead><tbody>${\n          arr(b.linhas).map(l => `<tr>${arr(l).map(c => `<td>${fmt(c)}</td>`).join('')}</tr>`).join('')}</tbody></table>${\n          b.legenda ? `<div class=\"tab__leg\">${esc(b.legenda)}</div>` : ''}`;\n      default:\n        return b.texto ? `<p>${fmt(b.texto)}</p>` : '';\n    }\n  };\n\n  const secoes = arr(m.secoes);\n  const questoes = arr(m.questoes);\n  const letras = 'ABCDE';\n  const hoje = new Date().toLocaleDateString('pt-BR', { day: '2-digit', month: 'long', year: 'numeric' });\n\n  const sumario = [\n    ...secoes.map((s, i) => `<li><span>${String(i + 1).padStart(2, '0')}</span>${esc(s.titulo)}</li>`),\n    arr(m.revisao).length ? `<li><span>R</span>Revisão rápida</li>` : '',\n    arr(m.glossario).length ? `<li><span>G</span>Glossário</li>` : '',\n    questoes.length ? `<li><span>Q</span>Questões de fixação e gabarito comentado</li>` : ''\n  ].join('');\n\n  const corpo = secoes.map((s, i) => `\n    <section class=\"sec\">\n      <h2><span class=\"sec__n\">${String(i + 1).padStart(2, '0')}</span>${esc(s.titulo)}</h2>\n      ${arr(s.blocos).map(bloco).join('\\n')}\n    </section>`).join('');\n\n  const revisao = arr(m.revisao).length ? `\n    <section class=\"sec\">\n      <h2><span class=\"sec__n\">R</span>Revisão rápida</h2>\n      <ul class=\"check\">${m.revisao.map(r => `<li>${fmt(r)}</li>`).join('')}</ul>\n    </section>` : '';\n\n  const glossario = arr(m.glossario).length ? `\n    <section class=\"sec\">\n      <h2><span class=\"sec__n\">G</span>Glossário</h2>\n      <dl class=\"glos\">${m.glossario.map(g => `<div><dt>${esc(g.termo)}</dt><dd>${fmt(g.definicao)}</dd></div>`).join('')}</dl>\n    </section>` : '';\n\n  const listaQ = questoes.map((q, i) => `\n    <div class=\"q\">\n      <div class=\"q__cab\"><span class=\"q__n\">${String(i + 1).padStart(2, '0')}</span>${q.banca ? `<span class=\"q__banca\">${esc(q.banca)}</span>` : ''}</div>\n      <p class=\"q__enun\">${fmt(q.enunciado)}</p>\n      ${arr(q.alternativas).length\n        ? `<ol class=\"q__alts\">${q.alternativas.map((a, j) => `<li><b>${letras[j]}</b>${fmt(String(a).replace(/^\\s*[A-Ea-e]\\s*[\\)\\.\\-]\\s*/, ''))}</li>`).join('')}</ol>`\n        : `<div class=\"q__ce\">( &nbsp; ) Certo &nbsp;&nbsp;&nbsp; ( &nbsp; ) Errado</div>`}\n    </div>`).join('');\n\n  const gabarito = questoes.map((q, i) => `\n    <div class=\"gab\">\n      <div class=\"gab__cab\"><span class=\"q__n\">${String(i + 1).padStart(2, '0')}</span><span class=\"gab__resp\">Gabarito: ${esc(q.gabarito)}</span></div>\n      <p>${fmt(q.comentario)}</p>\n    </div>`).join('');\n\n  const blocoQuestoes = questoes.length ? `\n    <section class=\"sec sec--quebra\">\n      <h2><span class=\"sec__n\">Q</span>Questões de fixação</h2>\n      ${listaQ}\n    </section>\n    <section class=\"sec sec--quebra\">\n      <h2><span class=\"sec__n\">✓</span>Gabarito comentado</h2>\n      <div class=\"gab__grade\">${questoes.map((q, i) => `<span><b>${i + 1}</b>${esc(q.gabarito)}</span>`).join('')}</div>\n      ${gabarito}\n    </section>` : '';\n\n  const css = `\n@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;700&display=swap');\n@page { size: A4; margin: 16mm 16mm 18mm; }\n@page :first { margin: 0; }\n:root {\n  --preto:#0e0e0e; --grafite:#191919; --ouro:#D4AF37; --ouro2:#b8932a; --ouro-claro:#f7f0da;\n  --papel:#ffffff; --texto:#23211d; --suave:#6b665c; --linha:#e6e1d4;\n  --laranja:#c2410c; --laranja-claro:#fdf0e7; --azul-claro:#eef3f6;\n  --head:'Space Grotesk','Inter',Arial,sans-serif; --body:'Inter',Arial,sans-serif;\n}\n* { box-sizing:border-box; -webkit-print-color-adjust:exact; print-color-adjust:exact; }\nhtml,body { margin:0; padding:0; }\nbody { font-family:var(--body); font-size:10.5pt; line-height:1.6; color:var(--texto); background:var(--papel); }\nb { font-weight:700; color:#000; } i { font-style:italic; }\np { margin:0 0 9pt; orphans:3; widows:3; }\nh1,h2,h3 { font-family:var(--head); margin:0; line-height:1.15; }\n\n/* rodapé fixo em todas as páginas de conteúdo */\n.rodape { position:fixed; bottom:-12mm; left:0; right:0; display:flex; justify-content:space-between;\n  font-family:var(--head); font-size:7pt; letter-spacing:.14em; text-transform:uppercase; color:var(--suave);\n  border-top:1px solid var(--linha); padding-top:5pt; }\n.rodape b { color:var(--ouro2); }\n\n/* CAPA */\n.capa { position:relative; width:210mm; height:297mm; background:var(--preto); color:#fff; overflow:hidden;\n  page-break-after:always; z-index:5; padding:26mm 22mm; display:flex; flex-direction:column; }\n.capa::before { content:''; position:absolute; inset:0; background-image:radial-gradient(rgba(212,175,55,.10) 1px, transparent 1px); background-size:9mm 9mm; }\n.capa::after { content:''; position:absolute; inset:0; background:radial-gradient(ellipse 70% 45% at 50% 0%, rgba(212,175,55,.20), transparent 70%); }\n.capa > * { position:relative; z-index:1; }\n.capa__topo { display:flex; align-items:center; justify-content:space-between; }\n.capa__marca { font-family:var(--head); font-weight:700; font-size:10pt; letter-spacing:.24em; text-transform:uppercase; display:flex; align-items:center; gap:8pt; }\n.capa__marca::before { content:''; width:7pt; height:7pt; background:var(--ouro); box-shadow:0 0 8pt var(--ouro); }\n.capa__marca span { color:var(--ouro); }\n.capa__logo { width:26mm; height:26mm; object-fit:contain; }\n.capa__meio { margin-top:auto; margin-bottom:auto; }\n.capa__selo { display:inline-block; font-family:var(--head); font-size:8pt; font-weight:700; letter-spacing:.28em; text-transform:uppercase;\n  color:var(--ouro); border:1px solid rgba(212,175,55,.45); padding:5pt 9pt; margin-bottom:16pt; }\n.capa h1 { font-size:34pt; font-weight:700; text-transform:uppercase; color:#fff; max-width:150mm; }\n.capa h1::after { content:''; display:block; width:22mm; height:3pt; background:var(--ouro); margin-top:14pt; box-shadow:0 0 12pt rgba(212,175,55,.6); }\n.capa__sub { font-size:13pt; color:rgba(255,255,255,.75); margin-top:14pt; max-width:140mm; }\n.capa__ficha { display:grid; grid-template-columns:repeat(3,1fr); border:1px solid rgba(212,175,55,.35); }\n.capa__ficha div { padding:9pt 11pt; border-right:1px solid rgba(212,175,55,.35); }\n.capa__ficha div:last-child { border-right:0; }\n.capa__ficha span { display:block; font-family:var(--head); font-size:6.5pt; letter-spacing:.2em; text-transform:uppercase; color:rgba(255,255,255,.55); }\n.capa__ficha strong { display:block; font-family:var(--head); font-size:10pt; color:var(--ouro); margin-top:3pt; }\n.capa__pe { margin-top:14pt; font-size:7.5pt; letter-spacing:.12em; text-transform:uppercase; color:rgba(255,255,255,.45); }\n\n/* abertura */\n.abre { border:1px solid var(--linha); border-top:3pt solid var(--ouro); padding:14pt 16pt; margin-bottom:16pt; background:#fcfbf7; }\n.abre h3 { font-size:9pt; letter-spacing:.2em; text-transform:uppercase; color:var(--ouro2); margin-bottom:6pt; }\n.sumario { list-style:none; margin:0 0 4pt; padding:0; columns:2; column-gap:14pt; }\n.sumario li { break-inside:avoid; padding:3pt 0; border-bottom:1px dotted var(--linha); font-size:9.5pt; }\n.sumario span { display:inline-block; min-width:18pt; font-family:var(--head); font-weight:700; color:var(--ouro2); }\n.obj { list-style:none; padding:0; margin:0; }\n.obj li { position:relative; padding-left:15pt; margin-bottom:3pt; }\n.obj li::before { content:'▸'; position:absolute; left:0; color:var(--ouro2); }\n\n/* seções */\n.sec { margin-bottom:10pt; }\n.sec--quebra { page-break-before:always; }\n.sec h2 { display:flex; align-items:center; gap:9pt; font-size:15pt; font-weight:700; text-transform:uppercase; color:var(--preto);\n  background:var(--preto); color:#fff; padding:8pt 12pt; margin:18pt 0 12pt; page-break-after:avoid; break-after:avoid; }\n.sec__n { flex-shrink:0; min-width:22pt; height:22pt; display:inline-grid; place-items:center; padding:0 4pt; background:var(--ouro); color:var(--preto); font-size:11pt; }\n\n.lista { margin:0 0 10pt; padding-left:0; list-style:none; }\n.lista li { position:relative; padding-left:14pt; margin-bottom:4pt; }\n.lista li::before { content:''; position:absolute; left:2pt; top:6pt; width:5pt; height:5pt; background:var(--ouro); }\n\n.box { position:relative; padding:10pt 13pt; margin:4pt 0 12pt; break-inside:avoid; page-break-inside:avoid; border:1px solid var(--linha); }\n.box p:last-child { margin-bottom:0; }\n.box__rot { font-family:var(--head); font-size:7.5pt; font-weight:700; letter-spacing:.2em; text-transform:uppercase; margin-bottom:5pt; }\n.box--chave { background:var(--ouro-claro); border-color:#e9dbad; border-left:4pt solid var(--ouro); }\n.box--chave .box__rot { color:var(--ouro2); }\n.box--lei { background:var(--grafite); border-color:var(--grafite); color:#eee; }\n.box--lei .box__rot { color:var(--ouro); }\n.box--lei p { font-family:Georgia,'Times New Roman',serif; font-style:italic; color:#f1efe9; }\n.box--lei b { color:#fff; }\n.box--lei cite { display:block; margin-top:6pt; font-style:normal; font-size:8pt; color:var(--ouro); letter-spacing:.04em; }\n.box--dica { border-left:4pt solid var(--ouro); }\n.box--dica .box__rot { color:var(--ouro2); }\n.box--atencao { background:var(--laranja-claro); border-color:#f6cfb4; border-left:4pt solid var(--laranja); }\n.box--atencao .box__rot { color:var(--laranja); }\n.box--exemplo { background:var(--azul-claro); border-color:#d8e3ea; }\n.box--exemplo .box__rot { color:#35536a; }\n.box::after { content:''; position:absolute; right:-1px; bottom:-1px; width:8pt; height:8pt; border-right:2pt solid var(--ouro); border-bottom:2pt solid var(--ouro); }\n\n.passos { list-style:none; padding:0; margin:4pt 0 12pt; }\n.passos li { display:flex; gap:10pt; align-items:flex-start; padding:7pt 0; border-bottom:1px solid var(--linha); break-inside:avoid; }\n.passos__n { flex-shrink:0; width:20pt; height:20pt; display:grid; place-items:center; font-family:var(--head); font-weight:700; color:var(--ouro2); border:1.5pt solid var(--ouro); }\n.passos b { display:block; font-family:var(--head); }\n.passos span { display:block; color:var(--suave); }\n\n.tab { width:100%; border-collapse:collapse; margin:4pt 0 12pt; font-size:9.5pt; break-inside:avoid; }\n.tab th { background:var(--preto); color:var(--ouro); font-family:var(--head); font-size:7.5pt; letter-spacing:.14em; text-transform:uppercase; text-align:left; padding:6pt 8pt; }\n.tab td { padding:6pt 8pt; border-bottom:1px solid var(--linha); vertical-align:top; }\n.tab tr:nth-child(even) td { background:#faf8f2; }\n.tab__leg { font-size:8pt; color:var(--suave); margin:-8pt 0 12pt; }\n\n.check { list-style:none; padding:0; margin:0; display:grid; grid-template-columns:1fr 1fr; gap:6pt; }\n.check li { position:relative; padding:7pt 9pt 7pt 26pt; border:1px solid var(--linha); background:#fcfbf7; break-inside:avoid; }\n.check li::before { content:'✓'; position:absolute; left:8pt; top:6pt; color:var(--ouro2); font-weight:700; }\n\n.glos { margin:0; }\n.glos div { display:grid; grid-template-columns:40mm 1fr; gap:10pt; padding:6pt 0; border-bottom:1px solid var(--linha); break-inside:avoid; }\n.glos dt { font-family:var(--head); font-weight:700; }\n.glos dd { margin:0; color:var(--suave); }\n\n.q { margin-bottom:14pt; break-inside:avoid; }\n.q__cab { display:flex; align-items:center; gap:8pt; background:#f1efe9; padding:4pt 8pt 4pt 0; margin-bottom:6pt; }\n.q__n { display:inline-grid; place-items:center; min-width:22pt; height:18pt; background:var(--preto); color:var(--ouro); font-family:var(--head); font-weight:700; font-size:9pt; }\n.q__banca { font-family:var(--head); font-size:8pt; letter-spacing:.08em; text-transform:uppercase; color:var(--suave); }\n.q__enun { margin-bottom:6pt; }\n.q__alts { list-style:none; padding:0; margin:0; }\n.q__alts li { display:flex; gap:8pt; padding:2.5pt 0; }\n.q__alts li b { flex-shrink:0; width:14pt; height:14pt; display:grid; place-items:center; border:1px solid var(--texto); border-radius:50%; font-size:7.5pt; }\n.q__ce { font-family:var(--head); font-size:9pt; }\n.gab__grade { display:flex; flex-wrap:wrap; gap:4pt; margin-bottom:14pt; }\n.gab__grade span { display:inline-flex; gap:5pt; padding:4pt 8pt; border:1px solid var(--linha); font-family:var(--head); font-size:9pt; }\n.gab__grade b { color:var(--ouro2); }\n.gab { margin-bottom:10pt; break-inside:avoid; }\n.gab__cab { display:flex; align-items:center; gap:8pt; margin-bottom:4pt; }\n.gab__resp { font-family:var(--head); font-weight:700; text-transform:uppercase; font-size:9pt; }\n\n.fim { margin-top:18pt; padding:14pt 16pt; background:var(--preto); color:#fff; break-inside:avoid; display:flex; gap:14pt; align-items:center; }\n.fim img { width:16mm; height:16mm; object-fit:contain; }\n.fim h3 { font-size:11pt; text-transform:uppercase; color:var(--ouro); margin-bottom:3pt; }\n.fim p { margin:0; font-size:9pt; color:rgba(255,255,255,.75); }\n`;\n\n  return `<!DOCTYPE html><html lang=\"pt-BR\"><head><meta charset=\"utf-8\"><title>${esc(m.titulo)}</title><style>${css}</style></head><body>\n<div class=\"capa\">\n  <div class=\"capa__topo\">\n    <div class=\"capa__marca\">Academia de Polícia <span>GCM</span></div>\n    ${cfg.LOGO_URL ? `<img class=\"capa__logo\" src=\"${esc(cfg.LOGO_URL)}\" alt=\"\">` : ''}\n  </div>\n  <div class=\"capa__meio\">\n    <div class=\"capa__selo\">Material didático · ${esc(m.disciplina || 'Guarda Municipal')}</div>\n    <h1>${esc(m.titulo)}</h1>\n    ${m.subtitulo ? `<p class=\"capa__sub\">${esc(m.subtitulo)}</p>` : ''}\n  </div>\n  <div class=\"capa__ficha\">\n    <div><span>Disciplina</span><strong>${esc(m.disciplina || '—')}</strong></div>\n    <div><span>Professor</span><strong>${esc(m.professor || 'Academia de Polícia')}</strong></div>\n    <div><span>Leitura</span><strong>${esc(m.duracao_leitura || '—')}</strong></div>\n  </div>\n  <div class=\"capa__pe\">Preparação Tática · ${esc(hoje)} · ${esc(cfg.SITE_URL || 'academiadepolicia.com.br')}</div>\n</div>\n\n\n\n<div class=\"abre\">\n  ${m.apresentacao ? `<h3>Apresentação</h3><p>${fmt(m.apresentacao)}</p>` : ''}\n  ${arr(m.objetivos).length ? `<h3>Ao final deste material você vai</h3><ul class=\"obj\">${m.objetivos.map(o => `<li>${fmt(o)}</li>`).join('')}</ul><br>` : ''}\n  <h3>Sumário</h3><ul class=\"sumario\">${sumario}</ul>\n</div>\n\n${corpo}\n${revisao}\n${glossario}\n${blocoQuestoes}\n\n<div class=\"fim\">\n  ${cfg.LOGO_URL ? `<img src=\"${esc(cfg.LOGO_URL)}\" alt=\"\">` : ''}\n  <div><h3>Academia de Polícia</h3><p>A única escola do Brasil focada exclusivamente em concursos de Guarda Municipal. Dúvidas? WhatsApp ${esc(cfg.WHATSAPP_FMT || '')} · ${esc(cfg.SITE_URL || 'academiadepolicia.com.br')}</p></div>\n</div>\n</body></html>`;\n}\n\n\n\nconst html = montarHTML(m, cfg);\nconst limpo = (s) => String(s).normalize('NFD').replace(/[\\u0300-\\u036f]/g, '').replace(/[\\\\/:*?\"<>|]+/g, '').trim();\nreturn {\n  json: {\n    fileId: prev.fileId,\n    pasta: prev.pasta,\n    base: prev.base,\n    transcricao: prev.transcricao,\n    titulo: m.titulo,\n    nomePdf: `${limpo(prev.base)} - Material Didatico.pdf`,\n    nomeTranscricao: `${limpo(prev.base)} - Transcricao`,\n    html\n  }\n};\n",
+        "mode": "runOnceForEachItem"
+      },
+      "name": "Processar Material",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1760,
+        300
+      ],
+      "id": "b29cba6a-eaf2-497d-bf59-ee2938f55f73"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Config').first().json.PDF_URL }}",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ html: $json.html }) }}",
+        "options": {
+          "batching": {
+            "batch": {
+              "batchSize": 1,
+              "batchInterval": 500
+            }
+          },
+          "timeout": 300000
+        }
+      },
+      "name": "Gerar PDF",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1980,
+        300
+      ],
+      "id": "ad7ffdaf-4ea3-42c5-90c7-e2fb1a8d05fd"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Converte o PDF (base64) em arquivo binário para o Drive\nconst r = $input.item.json;\nconst a = $('Processar Material').item.json;\nif (!r.pdf_base64) throw new Error('Serviço de PDF não devolveu o arquivo: ' + JSON.stringify(r).substring(0, 200));\nconst bin = await this.helpers.prepareBinaryData(Buffer.from(r.pdf_base64, 'base64'), a.nomePdf, 'application/pdf');\nreturn { json: { nomePdf: a.nomePdf, pasta: a.pasta, titulo: a.titulo }, binary: { data: bin } };\n",
+        "mode": "runOnceForEachItem"
+      },
+      "name": "Preparar PDF",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2200,
+        300
+      ],
+      "id": "1a55f343-2b9a-4cc7-a9c8-0cf89ec263b8"
+    },
+    {
+      "parameters": {
+        "name": "={{ $json.nomePdf }}",
+        "driveId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "My Drive"
+        },
+        "folderId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "={{ $json.pasta }}"
+        },
+        "options": {}
+      },
+      "name": "Salvar PDF no Drive",
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        2420,
+        300
+      ],
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "CREDENTIAL_ID",
+          "name": "Google Drive account"
+        }
+      },
+      "id": "ba61ab18-5bf9-49be-accb-2fbaddff6c9d"
+    },
+    {
+      "parameters": {
+        "operation": "createFromText",
+        "content": "={{ $('Processar Material').item.json.transcricao }}",
+        "name": "={{ $('Processar Material').item.json.nomeTranscricao }}",
+        "driveId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "My Drive"
+        },
+        "folderId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "={{ $('Processar Material').item.json.pasta }}"
+        },
+        "options": {}
+      },
+      "name": "Salvar Transcrição no Drive",
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        2640,
+        300
+      ],
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "CREDENTIAL_ID",
+          "name": "Google Drive account"
+        }
+      },
+      "id": "e54f62c7-0a4c-41e3-9ac3-04847361415f"
+    }
+  ],
+  "connections": {
+    "Novo Áudio no Drive": {
+      "main": [
+        [
+          {
+            "node": "Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Config": {
+      "main": [
+        [
+          {
+            "node": "Filtrar Áudio",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filtrar Áudio": {
+      "main": [
+        [
+          {
+            "node": "Baixar Áudio",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Baixar Áudio": {
+      "main": [
+        [
+          {
+            "node": "Preparar Áudio",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Preparar Áudio": {
+      "main": [
+        [
+          {
+            "node": "Transcrever (Whisper)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Transcrever (Whisper)": {
+      "main": [
+        [
+          {
+            "node": "Montar Chamada IA",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Montar Chamada IA": {
+      "main": [
+        [
+          {
+            "node": "IA Monta Material (Claude)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IA Monta Material (Claude)": {
+      "main": [
+        [
+          {
+            "node": "Processar Material",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Processar Material": {
+      "main": [
+        [
+          {
+            "node": "Gerar PDF",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gerar PDF": {
+      "main": [
+        [
+          {
+            "node": "Preparar PDF",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Preparar PDF": {
+      "main": [
+        [
+          {
+            "node": "Salvar PDF no Drive",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Salvar PDF no Drive": {
+      "main": [
+        [
+          {
+            "node": "Salvar Transcrição no Drive",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "meta": {
+    "sanitized": true,
+    "note": "Credenciais, IDs de conta e hosts internos trocados por placeholders."
+  }
+}
