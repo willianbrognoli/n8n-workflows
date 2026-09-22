@@ -1,0 +1,243 @@
+{
+  "name": "Leads Site Fauth (5 webhooks)",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "Compra-fauth",
+        "options": {}
+      },
+      "id": "1065e794-59ab-4328-9bdd-ff7d7edb4b77",
+      "name": "Webhook Compra",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        0,
+        0
+      ],
+      "webhookId": "f8853590-4f1a-4689-bce7-d0e390fd4c7a"
+    },
+    {
+      "parameters": {
+        "jsCode": "const zone = 'America/Sao_Paulo';\nconst item = $input.first().json;\nconst body = (item.body && typeof item.body === 'object') ? item.body : {};\nconst query = (item.query && typeof item.query === 'object') ? item.query : {};\nconst url = String(item.webhookUrl || '').toLowerCase();\n\nconst DOCS = {\n  compra:   'ID_PLANILHA_COMPRA',\n  blog:     'ID_PLANILHA_BLOG',\n  whatsapp: 'ID_PLANILHA_WHATSAPP',\n  amostra:  'ID_PLANILHA_AMOSTRA',\n  youtube:  'ID_PLANILHA_YOUTUBE'\n};\n\nlet origem = '';\nif (url.indexOf('compra-fauth') > -1) origem = 'compra';\nelse if (url.indexOf('materiais-youtube-fauth') > -1) origem = 'youtube';\nelse if (url.indexOf('blog-fauth') > -1) origem = 'blog';\nelse if (url.indexOf('whatsapp-fauth') > -1) origem = 'whatsapp';\nelse if (url.indexOf('amostra-fauth') > -1) origem = 'amostra';\nif (!origem) throw new Error('Webhook de origem desconhecida: ' + url);\n\nconst UTM_KEYS = ['utm_source','utm_medium','utm_campaign','utm_content','utm_term','utm_creative_format','gclid','fbclid'];\n\nconst kv = {};\nconst add = (k, v) => {\n  if (k === undefined || k === null) return;\n  const key = String(k).trim().toLowerCase();\n  if (!key) return;\n  let val = v;\n  if (val && typeof val === 'object') {\n    if ('value' in val) val = val.value; else val = JSON.stringify(val);\n  }\n  if (Array.isArray(val)) val = val.join(', ');\n  kv[key] = (val === undefined || val === null) ? '' : String(val);\n};\nconst absorve = (obj) => {\n  if (!obj) return;\n  if (Array.isArray(obj)) {\n    for (const e of obj) { if (e && typeof e === 'object') add(e.key !== undefined ? e.key : (e.id !== undefined ? e.id : e.name), e.value !== undefined ? e.value : ''); }\n  } else if (typeof obj === 'object') {\n    for (const [k, v] of Object.entries(obj)) {\n      if ((k === 'fields' || k === 'values' || k === 'form_fields') && v && typeof v === 'object') { absorve(v); }\n      else add(k, v);\n    }\n  }\n};\nabsorve(body);\nabsorve(query);\n\nconst usadas = new Set();\nconst achaPorChave = (regex) => {\n  for (const k of Object.keys(kv)) {\n    if (usadas.has(k)) continue;\n    if (regex.test(k)) { usadas.add(k); return kv[k]; }\n  }\n  return '';\n};\n\nlet email = '';\nfor (const k of Object.keys(kv)) {\n  const v = kv[k];\n  if ((/mail/.test(k) || /^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(v)) && /@/.test(v)) { email = v; usadas.add(k); break; }\n}\n\nlet telefone = achaPorChave(/(tel|phone|whats|celular|fone)/);\nif (!telefone) {\n  for (const k of Object.keys(kv)) {\n    if (usadas.has(k)) continue;\n    const v = kv[k];\n    const d = v.replace(/\\D/g, '');\n    if (d.length >= 10 && d.length <= 14 && /^[\\d\\s()+.\\-]+$/.test(v)) { telefone = v; usadas.add(k); break; }\n  }\n}\nlet dig = String(telefone || '').replace(/\\D/g, '').replace(/^0+/, '');\nif (dig) {\n  if (dig.indexOf('55') === 0 && (dig.length === 12 || dig.length === 13)) telefone = dig;\n  else if (dig.length === 10 || dig.length === 11) telefone = '55' + dig;\n  else telefone = dig;\n} else {\n  telefone = '';\n}\n\nlet nomeCompleto = '';\nfor (const k of Object.keys(kv)) {\n  if (usadas.has(k)) continue;\n  if (/(^|[_\\s-])(nome|name|first)/.test(k) && !/form/.test(k) && !/(sobrenome|last)/.test(k)) { nomeCompleto = kv[k]; usadas.add(k); break; }\n}\nlet sobrenome = achaPorChave(/(sobrenome|last[_\\s-]?name|surname)/);\nlet primeiroNome = nomeCompleto;\nif (!sobrenome && nomeCompleto.indexOf(' ') > -1) {\n  const partes = nomeCompleto.trim().split(/\\s+/);\n  primeiroNome = partes.shift();\n  sobrenome = partes.join(' ');\n}\n\nlet pagina = '';\nfor (const cand of [kv['pagina'], kv['page_url'], kv['referer'], kv['referrer'], kv['url']]) {\n  if (cand && /^https?:\\/\\//.test(cand)) { pagina = cand; break; }\n}\n\nconst utms = {};\nfor (const uk of UTM_KEYS) {\n  if (kv[uk]) { utms[uk] = kv[uk]; usadas.add(uk); }\n}\nif (pagina) {\n  try {\n    const parsed = new URL(pagina);\n    for (const uk of UTM_KEYS) {\n      const qv = parsed.searchParams.get(uk);\n      if (!utms[uk] && qv) utms[uk] = qv;\n    }\n  } catch (e) {}\n}\n\nconst agora = DateTime.now().setZone(zone);\n\nconst linha = {\n  'Data': agora.toFormat('dd/LL/yyyy'),\n  'Hora': agora.toFormat('HH:mm:ss'),\n  'Status': kv['status'] || '',\n  'Formulario': kv['formulario'] || kv['form_name'] || kv['form'] || '',\n  'Foco': kv['foco'] || kv['foco_de_estudos'] || '',\n  'Estado': kv['estado'] || kv['uf'] || '',\n  'primeiro_nome': primeiroNome || '',\n  'sobrenome': sobrenome || '',\n  'email': email || '',\n  'telefone': telefone,\n  'or': kv['or'] || kv['origem'] || '',\n  'utm_source': utms.utm_source || '',\n  'utm_medium': utms.utm_medium || '',\n  'utm_campaign': utms.utm_campaign || '',\n  'utm_content': utms.utm_content || '',\n  'utm_term': utms.utm_term || '',\n  'utm_creative_format': utms.utm_creative_format || '',\n  'gclid': utms.gclid || '',\n  'fbclid': utms.fbclid || '',\n  'pagina': pagina,\n  'video': kv['video'] || kv['video_url'] || '',\n  '_docId': DOCS[origem],\n  '_origem': origem\n};\n\nreturn [{ json: linha }];"
+      },
+      "id": "87eff143-d8d1-434b-a5c0-1f551439321e",
+      "name": "Normaliza e roteia",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        224,
+        384
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "={{ $json._docId }}"
+        },
+        "sheetName": {
+          "__rl": true,
+          "mode": "name",
+          "value": "Leads"
+        },
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "value": {},
+          "matchingColumns": [],
+          "schema": [],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {
+          "handlingExtraData": "ignoreIt"
+        }
+      },
+      "id": "1edd0844-e548-4061-9143-b8bd71172497",
+      "name": "Grava na base",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        448,
+        384
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "CREDENTIAL_ID",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "materiais-youtube-fauth",
+        "options": {}
+      },
+      "id": "d69073cd-0f24-4aab-8294-97f33a9d94f1",
+      "name": "Webhook Materiais YouTube",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        0,
+        192
+      ],
+      "webhookId": "dc0419d9-dee2-4282-94fa-df66d6e07eec"
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "Blog-fauth",
+        "options": {}
+      },
+      "id": "08f743c3-636e-4ddd-b27f-621344e75522",
+      "name": "Webhook Blog",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        0,
+        384
+      ],
+      "webhookId": "30cc838b-0c31-4956-ab53-956156b48763"
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "WhatsApp-fauth",
+        "options": {}
+      },
+      "id": "214406c8-c5e9-4454-bf3a-5647a07598cf",
+      "name": "Webhook WhatsApp",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        0,
+        576
+      ],
+      "webhookId": "a68cce96-578f-43ed-b370-3802c7b42857"
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "Amostra-fauth",
+        "options": {}
+      },
+      "id": "0d65b371-85ba-4328-a15e-b87e7c5295d3",
+      "name": "Webhook Amostra",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        0,
+        768
+      ],
+      "webhookId": "bfc9b7ba-1698-4fbb-970a-c19adf7cffd8"
+    },
+    {
+      "id": "3de3e109-58cd-4954-8941-2e5db0af41cd",
+      "name": "PG: grava lead",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        900,
+        300
+      ],
+      "parameters": {
+        "operation": "executeQuery",
+        "options": {
+          "queryReplacement": "={{ [$json.Data, $json.Hora, $json._origem, $json.Formulario, $json.Foco, $json.Estado, $json.Status, $json['or'], $json.primeiro_nome, $json.sobrenome, $json.email, $json.telefone, $json.utm_source, $json.utm_medium, $json.utm_campaign, $json.utm_content, $json.utm_term, $json.utm_creative_format, $json.gclid, $json.fbclid, $json.pagina, $json.video] }}"
+        },
+        "query": "INSERT INTO leads (data_hora, origem, formulario, foco, estado, status, or_origem, primeiro_nome, sobrenome, email, telefone, utm_source, utm_medium, utm_campaign, utm_content, utm_term, utm_creative_format, gclid, fbclid, pagina, video) VALUES ((to_timestamp($1 || ' ' || $2,'DD/MM/YYYY HH24:MI:SS')::timestamp AT TIME ZONE 'America/Sao_Paulo'), 'webhook-' || $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22)"
+      },
+      "credentials": {
+        "postgres": {
+          "id": "CREDENTIAL_ID",
+          "name": "Postgres Fauth"
+        }
+      },
+      "notes": "Fonte da verdade: grava cada lead recebido pelos webhooks no Postgres da VPS, com a origem identificada."
+    }
+  ],
+  "connections": {
+    "Webhook Compra": {
+      "main": [
+        [
+          {
+            "node": "Normaliza e roteia",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normaliza e roteia": {
+      "main": [
+        [
+          {
+            "node": "Grava na base",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "PG: grava lead",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Webhook Materiais YouTube": {
+      "main": [
+        [
+          {
+            "node": "Normaliza e roteia",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Webhook Blog": {
+      "main": [
+        [
+          {
+            "node": "Normaliza e roteia",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Webhook WhatsApp": {
+      "main": [
+        [
+          {
+            "node": "Normaliza e roteia",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Webhook Amostra": {
+      "main": [
+        [
+          {
+            "node": "Normaliza e roteia",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "meta": {
+    "sanitized": true,
+    "note": "Credenciais, IDs de conta e hosts internos trocados por placeholders."
+  }
+}

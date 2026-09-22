@@ -1,0 +1,785 @@
+{
+  "name": "Elementor para Planilha (diario 00:05)",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "triggerAtMinute": 5
+            }
+          ]
+        }
+      },
+      "id": "8411ce7d-1d6e-49b6-803d-774d6b21492f",
+      "name": "Diariamente 00:05",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.3,
+      "position": [
+        0,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const zone = 'America/Sao_Paulo';\nconst now = DateTime.now().setZone(zone);\nlet ini, fim;\nif ($execution.mode !== 'production') {\n  ini = now.startOf('day');\n  fim = now.endOf('day');\n} else {\n  const ontem = now.minus({ days: 1 });\n  ini = ontem.startOf('day');\n  fim = ontem.endOf('day');\n}\nreturn [{ json: {\n  de: ini.toISO(),\n  ate: fim.toISO(),\n  deMs: ini.toMillis(),\n  ateMs: fim.toMillis(),\n  deGmt: ini.toUTC().toFormat('yyyy-LL-dd HH:mm:ss'),\n  ateGmt: fim.toUTC().toFormat('yyyy-LL-dd HH:mm:ss'),\n  modo: $execution.mode\n} }];"
+      },
+      "id": "5aff06d7-ae8e-4fd4-baaf-b8039df3b0c3",
+      "name": "Define periodo",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        224,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "create",
+        "documentId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "ID_PLANILHA_ELEMENTOR"
+        },
+        "title": "Elementor",
+        "options": {}
+      },
+      "id": "08cfdcd0-ad24-4c38-8dce-0ffd6a7b0929",
+      "name": "Garante aba Elementor",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        448,
+        0
+      ],
+      "executeOnce": true,
+      "alwaysOutputData": true,
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "CREDENTIAL_ID",
+          "name": "Google Sheets account"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "url": "https://adrianefauth.com.br/wp-json/n8n-fix/v1/submissions",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "per_page",
+              "value": "100"
+            },
+            {
+              "name": "de",
+              "value": "={{ $('Define periodo').first().json.deGmt }}"
+            },
+            {
+              "name": "ate",
+              "value": "={{ $('Define periodo').first().json.ateGmt }}"
+            }
+          ]
+        },
+        "options": {
+          "pagination": {
+            "pagination": {
+              "parameters": {
+                "parameters": [
+                  {
+                    "name": "page",
+                    "value": "={{ $pageCount + 1 }}"
+                  }
+                ]
+              },
+              "paginationCompleteWhen": "other",
+              "completeExpression": "={{ !$response.body || !$response.body.data || $response.body.data.length === 0 }}",
+              "limitPagesFetched": true,
+              "maxRequests": 30,
+              "requestInterval": 300
+            }
+          },
+          "timeout": 30000
+        }
+      },
+      "id": "cb31227a-845c-4f85-a567-54795969ec21",
+      "name": "Busca envios Elementor",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        672,
+        0
+      ],
+      "executeOnce": true,
+      "credentials": {
+        "httpBasicAuth": {
+          "id": "CREDENTIAL_ID",
+          "name": "WordPress Adriane Fauth"
+        },
+        "httpHeaderAuth": {
+          "id": "CREDENTIAL_ID",
+          "name": "Token Ponte Elementor"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const zone = 'America/Sao_Paulo';\nconst periodo = $('Define periodo').first().json;\nconst deMs = periodo.deMs;\nconst ateMs = periodo.ateMs;\n\nconst UTM_KEYS = ['utm_source','utm_medium','utm_campaign','utm_term','utm_content','utm_id','gclid','fbclid','ttclid','msclkid'];\n\nfunction coletaKV(sub) {\n  const kv = {};\n  const add = (k, v) => {\n    if (k === undefined || k === null) return;\n    const key = String(k).trim();\n    if (!key) return;\n    let val = v;\n    if (val && typeof val === 'object') {\n      if ('value' in val) val = val.value; else val = JSON.stringify(val);\n    }\n    if (Array.isArray(val)) val = val.join(', ');\n    kv[key] = (val === undefined || val === null) ? '' : String(val);\n  };\n  const fontes = [sub.values, sub.form_fields, sub.fields, sub.meta];\n  for (const f of fontes) {\n    if (!f) continue;\n    if (Array.isArray(f)) {\n      for (const e of f) { if (e && typeof e === 'object') add(e.key !== undefined ? e.key : (e.id !== undefined ? e.id : e.name), e.value !== undefined ? e.value : (e.title !== undefined ? e.title : '')); }\n    } else if (typeof f === 'object') {\n      for (const [k, v] of Object.entries(f)) add(k, v);\n    }\n  }\n  return kv;\n}\n\nfunction parseData(sub) {\n  const gmt = sub.created_at_gmt;\n  const local = sub.created_at || sub.date;\n  let dt = null;\n  if (gmt) { dt = DateTime.fromSQL(String(gmt), { zone: 'utc' }); if (!dt.isValid) dt = DateTime.fromISO(String(gmt), { zone: 'utc' }); }\n  if ((!dt || !dt.isValid) && local) { dt = DateTime.fromSQL(String(local), { zone: zone }); if (!dt.isValid) dt = DateTime.fromISO(String(local), { zone: zone }); }\n  return (dt && dt.isValid) ? dt : null;\n}\n\nfunction normalizaTelefone(bruto) {\n  let dig = String(bruto || '').replace(/\\D/g, '');\n  if (!dig) return '';\n  dig = dig.replace(/^0+/, '');\n  if (dig.indexOf('55') === 0 && (dig.length === 12 || dig.length === 13)) return dig;\n  if (dig.length === 10 || dig.length === 11) return '55' + dig;\n  return dig;\n}\n\nconst linhas = [];\nfor (const item of $input.all()) {\n  const corpo = item.json || {};\n  const lista = Array.isArray(corpo.data) ? corpo.data : (Array.isArray(corpo) ? corpo : (corpo.id ? [corpo] : []));\n  for (const sub of lista) {\n    const dt = parseData(sub);\n    if (!dt) continue;\n    const ms = dt.toMillis();\n    if (ms < deMs || ms > ateMs) continue;\n\n    const kvOrig = coletaKV(sub);\n    const kvLower = {};\n    for (const [k, v] of Object.entries(kvOrig)) kvLower[k.toLowerCase()] = v;\n\n    const usadas = new Set();\n\n    function achaPorChave(regex) {\n      for (const k of Object.keys(kvLower)) {\n        if (usadas.has(k)) continue;\n        if (regex.test(k)) { usadas.add(k); return kvLower[k]; }\n      }\n      return '';\n    }\n\n    let email = '';\n    for (const k of Object.keys(kvLower)) {\n      const v = kvLower[k];\n      if ((/mail/.test(k) || /^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(v)) && /@/.test(v)) { email = v; usadas.add(k); break; }\n    }\n\n    let telefone = achaPorChave(/(tel|phone|whats|celular|fone)/);\n    if (!telefone) {\n      for (const k of Object.keys(kvLower)) {\n        if (usadas.has(k)) continue;\n        const v = kvLower[k];\n        const dig = v.replace(/\\D/g, '');\n        if (dig.length >= 10 && dig.length <= 14 && /^[\\d\\s()+.\\-]+$/.test(v)) { telefone = v; usadas.add(k); break; }\n      }\n    }\n    telefone = normalizaTelefone(telefone);\n\n    let nomeCompleto = '';\n    for (const k of Object.keys(kvLower)) {\n      if (usadas.has(k)) continue;\n      if (/(^|[_\\s-])(nome|name|first)/.test(k) && !/form/.test(k) && !/(sobrenome|last)/.test(k)) { nomeCompleto = kvLower[k]; usadas.add(k); break; }\n    }\n    let sobrenome = '';\n    for (const k of Object.keys(kvLower)) {\n      if (usadas.has(k)) continue;\n      if (/(sobrenome|last[_\\s-]?name|surname)/.test(k)) { sobrenome = kvLower[k]; usadas.add(k); break; }\n    }\n    let primeiroNome = nomeCompleto;\n    if (!sobrenome && nomeCompleto.indexOf(' ') > -1) {\n      const partes = nomeCompleto.trim().split(/\\s+/);\n      primeiroNome = partes.shift();\n      sobrenome = partes.join(' ');\n    }\n\n    let pagina = '';\n    const candidatos = [sub.referer, sub.page && sub.page.url, kvLower['page_url'], kvLower['referer'], kvLower['referrer'], kvLower['url']];\n    for (const cand of candidatos) {\n      if (cand && /^https?:\\/\\//.test(String(cand))) { pagina = String(cand); break; }\n    }\n\n    const utms = {};\n    for (const uk of UTM_KEYS) {\n      if (kvLower[uk] !== undefined && kvLower[uk] !== '') { utms[uk] = kvLower[uk]; usadas.add(uk); }\n    }\n    const urlsPossiveis = [pagina];\n    for (const v of Object.values(kvLower)) { if (/^https?:\\/\\/.+utm_/.test(v)) urlsPossiveis.push(v); }\n    for (const u of urlsPossiveis) {\n      if (!u) continue;\n      try {\n        const parsed = new URL(u);\n        for (const uk of UTM_KEYS) {\n          const qv = parsed.searchParams.get(uk);\n          if (!utms[uk] && qv) utms[uk] = qv;\n        }\n      } catch (e) {}\n    }\n\n    const extras = {};\n    for (const [k, v] of Object.entries(kvLower)) {\n      if (!usadas.has(k) && v !== '') extras[k] = v;\n    }\n\n    const formulario = (sub.form && (sub.form.name || sub.form.title)) || sub.form_name || kvLower['form_name'] || '';\n\n    linhas.push({ json: {\n      data_hora: dt.setZone(zone).toFormat('dd/LL/yyyy HH:mm:ss'),\n      formulario: String(formulario),\n      primeiro_nome: primeiroNome || '',\n      sobrenome: sobrenome || '',\n      email: email || '',\n      telefone: telefone || '',\n      utm_source: utms.utm_source || '',\n      utm_medium: utms.utm_medium || '',\n      utm_campaign: utms.utm_campaign || '',\n      utm_term: utms.utm_term || '',\n      utm_content: utms.utm_content || '',\n      utm_id: utms.utm_id || '',\n      gclid: utms.gclid || '',\n      fbclid: utms.fbclid || '',\n      pagina: pagina,\n      submission_id: String(sub.id !== undefined ? sub.id : ''),\n      extras: Object.keys(extras).length ? JSON.stringify(extras) : ''\n    } });\n  }\n}\nreturn linhas;"
+      },
+      "id": "4a47fa7a-8406-4250-b511-1b8f8d754b51",
+      "name": "Normaliza envios",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        896,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "ID_PLANILHA_LEADS"
+        },
+        "sheetName": {
+          "__rl": true,
+          "mode": "list",
+          "value": "406532830",
+          "cachedResultName": "Leads"
+        },
+        "options": {
+          "dataLocationOnSheet": {
+            "values": {
+              "rangeDefinition": "specifyRangeA1",
+              "range": "P:P"
+            }
+          }
+        }
+      },
+      "id": "3cf43e86-7cf2-4073-a440-461742415e39",
+      "name": "Le IDs existentes",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        1120,
+        0
+      ],
+      "executeOnce": true,
+      "alwaysOutputData": true,
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "CREDENTIAL_ID",
+          "name": "Google Sheets account"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const existentes = new Set();\nfor (const it of $('Le IDs existentes').all()) {\n  const j = it.json || {};\n  const v = (j.submission_id !== undefined) ? j.submission_id : j.id;\n  if (v !== undefined && v !== null && String(v) !== '') existentes.add(String(v));\n}\nconst saida = [];\nfor (const it of $('Normaliza envios').all()) {\n  const id = String(it.json.submission_id || '');\n  if (!id || !existentes.has(id)) saida.push({ json: it.json });\n}\nreturn saida;"
+      },
+      "id": "608c6114-3b00-406f-b58d-7dd961181ece",
+      "name": "Filtra novos",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1344,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "ID_PLANILHA_ELEMENTOR"
+        },
+        "sheetName": {
+          "__rl": true,
+          "mode": "name",
+          "value": "Elementor"
+        },
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "value": {},
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "data_hora",
+              "displayName": "data_hora",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "formulario",
+              "displayName": "formulario",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "primeiro_nome",
+              "displayName": "primeiro_nome",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "sobrenome",
+              "displayName": "sobrenome",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "email",
+              "displayName": "email",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "telefone",
+              "displayName": "telefone",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "utm_source",
+              "displayName": "utm_source",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "utm_medium",
+              "displayName": "utm_medium",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "utm_campaign",
+              "displayName": "utm_campaign",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "utm_term",
+              "displayName": "utm_term",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "utm_content",
+              "displayName": "utm_content",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "utm_id",
+              "displayName": "utm_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "gclid",
+              "displayName": "gclid",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "fbclid",
+              "displayName": "fbclid",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "pagina",
+              "displayName": "pagina",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "submission_id",
+              "displayName": "submission_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "extras",
+              "displayName": "extras",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {
+          "handlingExtraData": "insertInNewColumn"
+        }
+      },
+      "id": "6e14e6b2-e76c-4a38-a724-bad29cff6f7a",
+      "name": "Adiciona na planilha",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        1824,
+        -32
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "CREDENTIAL_ID",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "ID_PLANILHA_LEADS"
+        },
+        "sheetName": {
+          "__rl": true,
+          "cachedResultName": "Leads",
+          "mode": "list",
+          "value": "406532830"
+        },
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "value": {},
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "data_hora",
+              "displayName": "data_hora",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "formulario",
+              "displayName": "formulario",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "primeiro_nome",
+              "displayName": "primeiro_nome",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "sobrenome",
+              "displayName": "sobrenome",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "email",
+              "displayName": "email",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "telefone",
+              "displayName": "telefone",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "utm_source",
+              "displayName": "utm_source",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "utm_medium",
+              "displayName": "utm_medium",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "utm_campaign",
+              "displayName": "utm_campaign",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "utm_term",
+              "displayName": "utm_term",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "utm_content",
+              "displayName": "utm_content",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "utm_id",
+              "displayName": "utm_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "gclid",
+              "displayName": "gclid",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "fbclid",
+              "displayName": "fbclid",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "pagina",
+              "displayName": "pagina",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "submission_id",
+              "displayName": "submission_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "extras",
+              "displayName": "extras",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {
+          "handlingExtraData": "insertInNewColumn"
+        }
+      },
+      "id": "f137a5f0-ca22-4baf-ad67-a444f6a35a31",
+      "name": "Adiciona no database",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        1584,
+        -16
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "CREDENTIAL_ID",
+          "name": "Google Sheets account"
+        }
+      },
+      "notes": "Arquivo geral, somente insercao. A deduplicacao le a coluna P (submission_id) desta planilha, entao nunca apagar linhas nem reordenar colunas aqui."
+    },
+    {
+      "id": "e0b2ce46-bd48-4f9f-80ad-fb050a634dca",
+      "name": "Ordena planilha por formulario",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        2260,
+        0
+      ],
+      "parameters": {
+        "authentication": "predefinedCredentialType",
+        "jsonBody": "{\"requests\":[{\"sortRange\":{\"range\":{\"sheetId\":2007681242,\"startRowIndex\":1},\"sortSpecs\":[{\"dimensionIndex\":1,\"sortOrder\":\"ASCENDING\"}]}}]}",
+        "method": "POST",
+        "nodeCredentialType": "googleSheetsOAuth2Api",
+        "options": {},
+        "sendBody": true,
+        "specifyBody": "json",
+        "url": "https://sheets.googleapis.com/v4/spreadsheets/ID_PLANILHA_ELEMENTOR:batchUpdate"
+      },
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "CREDENTIAL_ID",
+          "name": "Google Sheets account"
+        }
+      },
+      "notes": "Depois de gravar os leads do dia, reordena a aba Elementor (operacional) em ordem alfabetica pela coluna B (formulario), mantendo o cabecalho fixo."
+    },
+    {
+      "id": "3edf1a69-0b0e-4317-b32a-0d74cb985744",
+      "name": "PG: grava leads",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        1900,
+        400
+      ],
+      "parameters": {
+        "operation": "executeQuery",
+        "options": {
+          "queryReplacement": "={{ [$json.data_hora, $json.formulario, $json.primeiro_nome, $json.sobrenome, $json.email, $json.telefone, $json.utm_source, $json.utm_medium, $json.utm_campaign, $json.utm_content, $json.utm_term, $json.gclid, $json.fbclid, $json.pagina, $json.submission_id, $json.extras] }}"
+        },
+        "query": "INSERT INTO leads (data_hora, origem, formulario, primeiro_nome, sobrenome, email, telefone, utm_source, utm_medium, utm_campaign, utm_content, utm_term, gclid, fbclid, pagina, submission_id, extras) VALUES ((to_timestamp($1,'DD/MM/YYYY HH24:MI:SS')::timestamp AT TIME ZONE 'America/Sao_Paulo'), 'site-elementor', $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, NULLIF($16,'')::jsonb) ON CONFLICT DO NOTHING"
+      },
+      "credentials": {
+        "postgres": {
+          "id": "CREDENTIAL_ID",
+          "name": "Postgres Fauth"
+        }
+      },
+      "notes": "Fonte da verdade: grava os leads diarios do Elementor no Postgres da VPS. ON CONFLICT DO NOTHING deduplica por submission_id."
+    }
+  ],
+  "connections": {
+    "Diariamente 00:05": {
+      "main": [
+        [
+          {
+            "node": "Define periodo",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Define periodo": {
+      "main": [
+        [
+          {
+            "node": "Garante aba Elementor",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Garante aba Elementor": {
+      "main": [
+        [
+          {
+            "node": "Busca envios Elementor",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Busca envios Elementor": {
+      "main": [
+        [
+          {
+            "node": "Normaliza envios",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normaliza envios": {
+      "main": [
+        [
+          {
+            "node": "Le IDs existentes",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Le IDs existentes": {
+      "main": [
+        [
+          {
+            "node": "Filtra novos",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filtra novos": {
+      "main": [
+        [
+          {
+            "node": "Adiciona no database",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "PG: grava leads",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Adiciona no database": {
+      "main": [
+        [
+          {
+            "node": "Adiciona na planilha",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Adiciona na planilha": {
+      "main": [
+        [
+          {
+            "node": "Ordena planilha por formulario",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "America/Sao_Paulo",
+    "binaryMode": "separate"
+  },
+  "meta": {
+    "sanitized": true,
+    "note": "Credenciais, IDs de conta e hosts internos trocados por placeholders."
+  }
+}

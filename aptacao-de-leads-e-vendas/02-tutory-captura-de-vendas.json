@@ -1,0 +1,157 @@
+{
+  "name": "Tutory - captura de eventos (webhook)",
+  "nodes": [
+    {
+      "id": "7c8f516a-570c-4cb2-8eae-696046df645a",
+      "name": "Webhook Tutory",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        0,
+        0
+      ],
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "tutory-fauth",
+        "options": {}
+      },
+      "webhookId": "3d60e006-d1e2-4221-ae9e-14e8e73b2466"
+    },
+    {
+      "id": "214a9d18-977f-4f10-9281-61bd195f71f4",
+      "name": "Garante tabela eventos",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        224,
+        0
+      ],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "CREATE TABLE IF NOT EXISTS webhook_eventos (id BIGSERIAL PRIMARY KEY, fonte TEXT NOT NULL, recebido_em TIMESTAMPTZ NOT NULL DEFAULT now(), headers JSONB, payload JSONB)",
+        "options": {}
+      },
+      "credentials": {
+        "postgres": {
+          "id": "CREDENTIAL_ID",
+          "name": "Postgres Fauth"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "291c8778-3da6-4388-a226-7ef3aa05707e",
+      "name": "Grava evento bruto",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        448,
+        0
+      ],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO webhook_eventos (fonte, payload, headers) VALUES ('tutory', $1::jsonb, $2::jsonb)",
+        "options": {
+          "queryReplacement": "={{ [JSON.stringify($('Webhook Tutory').first().json.body || {}), JSON.stringify($('Webhook Tutory').first().json.headers || {})] }}"
+        }
+      },
+      "credentials": {
+        "postgres": {
+          "id": "CREDENTIAL_ID",
+          "name": "Postgres Fauth"
+        }
+      },
+      "executeOnce": true
+    },
+    {
+      "id": "b34dd85d-d0c2-4b40-b28c-fb45d08d2abb",
+      "name": "Prepara compra",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        700,
+        0
+      ],
+      "parameters": {
+        "jsCode": "const b = $('Webhook Tutory').first().json.body || {};\nconst EVENTOS_PEDIDO = ['pix_gerado','boleto_gerado','pagamento_aprovado','pagamento_recusado','pagamento_cancelado'];\nif (EVENTOS_PEDIDO.indexOf(b.evento) === -1) return [];\n\nconst MAPA_STATUS = { pending: 'pending', paid: 'paid', failed: 'failed', canceled: 'canceled' };\nconst status = MAPA_STATUS[String(b.status || '').toLowerCase()] || String(b.status || b.evento || '');\n\nconst nome = String(b.nome || '').trim();\nconst partes = nome.split(/\\s+/);\nconst pn = partes.shift() || '';\nconst sn = partes.join(' ');\n\nlet tel = String(b.telefone || '').replace(/\\D/g, '').replace(/^0+/, '');\nif (tel) {\n  if (tel.indexOf('55') === 0 && (tel.length === 12 || tel.length === 13)) {}\n  else if (tel.length === 10 || tel.length === 11) tel = '55' + tel;\n}\n\nconst limpa = (s) => String(s || '').normalize('NFD').replace(/[\\u0300-\\u036f]/g, '').toLowerCase().trim();\nconst UF = { 'acre':'AC','alagoas':'AL','amapa':'AP','amazonas':'AM','bahia':'BA','ceara':'CE','distrito federal':'DF','espirito santo':'ES','goias':'GO','maranhao':'MA','mato grosso':'MT','mato grosso do sul':'MS','minas gerais':'MG','para':'PA','paraiba':'PB','parana':'PR','pernambuco':'PE','piaui':'PI','rio de janeiro':'RJ','rio grande do norte':'RN','rio grande do sul':'RS','rondonia':'RO','roraima':'RR','santa catarina':'SC','sao paulo':'SP','sergipe':'SE','tocantins':'TO' };\nlet estado = String((b.endereco && b.endereco.estado) || '').trim();\nif (estado.length === 2) estado = estado.toUpperCase();\nelse estado = UF[limpa(estado)] || estado.slice(0, 2).toUpperCase();\n\nlet valor = b.valor;\nif (valor === undefined || valor === null) valor = b.valores && b.valores.bruto;\nif (valor === undefined || valor === null) valor = b.oferta && b.oferta.valor;\nconst liquido = b.valores && b.valores.liquido;\n\nconst meta = b.metadados || {};\nlet utms = meta.utms_json;\nif (!utms && typeof meta.utms === 'string') { try { utms = JSON.parse(meta.utms); } catch (e) { utms = {}; } }\nutms = utms || {};\n\nlet dh = null;\nif (Array.isArray(b.cobrancas) && b.cobrancas[0] && b.cobrancas[0].data_pagamento) dh = b.cobrancas[0].data_pagamento;\nconst agora = DateTime.now().setZone('America/Sao_Paulo');\nconst dhFinal = dh ? String(dh).replace('T', ' ').slice(0, 19) : agora.toFormat('yyyy-LL-dd HH:mm:ss');\n\nreturn [{ json: {\n  dh: dhFinal,\n  id: String(b.id || ''),\n  evento: String(b.evento || ''),\n  status: status,\n  valor: (valor === undefined || valor === null) ? null : Number(valor),\n  liquido: (liquido === undefined || liquido === null) ? null : Number(liquido),\n  meio: String(b.meio || ''),\n  cupom: String(meta.cupom || ''),\n  produto: String((b.produto && b.produto.nome) || ''),\n  produto_id: String((b.produto && b.produto.id) || ''),\n  email: String(b.email || '').toLowerCase(),\n  telefone: tel,\n  pn: pn, sn: sn,\n  estado: estado,\n  cidade: String((b.endereco && b.endereco.cidade) || ''),\n  us: String(utms.utm_source || ''),\n  um: String(utms.utm_medium || ''),\n  uc: String(utms.utm_campaign || ''),\n  uct: String(utms.utm_content || ''),\n  ut: String(utms.utm_term || '')\n} }];"
+      }
+    },
+    {
+      "id": "9874ce38-1d0c-4b65-9106-8a9f1e0eb42f",
+      "name": "Upsert compra",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        900,
+        0
+      ],
+      "parameters": {
+        "operation": "executeQuery",
+        "options": {
+          "queryReplacement": "={{ [JSON.stringify([$json])] }}"
+        },
+        "query": "INSERT INTO compras (data_hora, plataforma, transacao_id, produto, produto_id, valor, valor_liquido, status, evento, meio, cupom, email, telefone, primeiro_nome, sobrenome, estado, cidade, utm_source, utm_medium, utm_campaign, utm_content, utm_term)\nSELECT (to_timestamp(x->>'dh','YYYY-MM-DD HH24:MI:SS')::timestamp AT TIME ZONE 'America/Sao_Paulo'), 'tutory', x->>'id', x->>'produto', x->>'produto_id', (nullif(x->>'valor','null'))::numeric, (nullif(x->>'liquido','null'))::numeric, x->>'status', x->>'evento', x->>'meio', x->>'cupom', x->>'email', x->>'telefone', x->>'pn', x->>'sn', x->>'estado', x->>'cidade', x->>'us', x->>'um', x->>'uc', x->>'uct', x->>'ut'\nFROM jsonb_array_elements($1::jsonb) x\nON CONFLICT (plataforma, transacao_id) WHERE transacao_id <> '' DO UPDATE SET\n  status = EXCLUDED.status, evento = EXCLUDED.evento, valor = coalesce(EXCLUDED.valor, compras.valor),\n  valor_liquido = coalesce(EXCLUDED.valor_liquido, compras.valor_liquido), meio = EXCLUDED.meio,\n  cupom = CASE WHEN EXCLUDED.cupom <> '' THEN EXCLUDED.cupom ELSE compras.cupom END,\n  utm_source = CASE WHEN EXCLUDED.utm_source <> '' THEN EXCLUDED.utm_source ELSE compras.utm_source END,\n  utm_medium = CASE WHEN EXCLUDED.utm_medium <> '' THEN EXCLUDED.utm_medium ELSE compras.utm_medium END,\n  utm_campaign = CASE WHEN EXCLUDED.utm_campaign <> '' THEN EXCLUDED.utm_campaign ELSE compras.utm_campaign END"
+      },
+      "credentials": {
+        "postgres": {
+          "id": "CREDENTIAL_ID",
+          "name": "Postgres Fauth"
+        }
+      },
+      "notes": "Grava/atualiza o pedido na tabela compras. Mesmo pedido evolui de pending para paid pelo ON CONFLICT."
+    }
+  ],
+  "connections": {
+    "Webhook Tutory": {
+      "main": [
+        [
+          {
+            "node": "Garante tabela eventos",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Garante tabela eventos": {
+      "main": [
+        [
+          {
+            "node": "Grava evento bruto",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Grava evento bruto": {
+      "main": [
+        [
+          {
+            "node": "Prepara compra",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepara compra": {
+      "main": [
+        [
+          {
+            "node": "Upsert compra",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "meta": {
+    "sanitized": true,
+    "note": "Credenciais, IDs de conta e hosts internos trocados por placeholders."
+  }
+}
